@@ -1,0 +1,312 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// NextAuth.js Models
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  role          Role      @default(CUSTOMER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  addresses     Address[]
+  uploads       Upload[]
+  orders        Order[]
+  cartItems     CartItem[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Application Models
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+model Address {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  line1     String
+  line2     String?
+  city      String
+  state     String
+  zip       String
+  country   String   @default("US")
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
+}
+
+enum UploadStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  APPROVED
+  FAILED
+}
+
+model Upload {
+  id              String       @id @default(cuid())
+  userId          String?
+  sessionId       String?      // For guest uploads
+  status          UploadStatus @default(PENDING)
+
+  // Original image
+  originalUrl     String
+  originalKey     String
+
+  // AI Analysis results
+  gearType        String?      // e.g., "firearm", "camera", "drone"
+  gearDetails     Json?        // Detected items with bounding boxes
+
+  // Calibration
+  calibrationMethod String?    // "reference" | "manual"
+  pixelsPerInch     Float?
+
+  // Generated files
+  outlineUrl      String?
+  outlineSvgUrl   String?
+  outlineDxfUrl   String?
+  outlineDxfKey   String?
+
+  // Dimensions (in inches)
+  width           Float?
+  height          Float?
+  depth           Float?
+  tolerance       Float        @default(0.1)
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  orderItems OrderItem[]
+  cartItems  CartItem[]
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  brand       String
+  description String   @db.Text
+  image       String
+  images      String[]
+
+  // Case dimensions (interior, in inches)
+  interiorLength Float
+  interiorWidth  Float
+  interiorDepth  Float
+
+  // Exterior dimensions
+  exteriorLength Float?
+  exteriorWidth  Float?
+  exteriorDepth  Float?
+
+  weight      Float?   // in lbs
+
+  // Pricing
+  basePrice   Int      // in cents
+
+  // Metadata
+  features    String[]
+  category    String   @default("pelican")
+  isActive    Boolean  @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  foamOptions FoamOption[]
+  orderItems  OrderItem[]
+  cartItems   CartItem[]
+}
+
+model FoamOption {
+  id          String  @id @default(cuid())
+  productId   String
+  name        String  // e.g., "Standard", "Pick N Pluck", "Custom Cut"
+  description String?
+  price       Int     // Additional price in cents
+  isDefault   Boolean @default(false)
+
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+  cartItems  CartItem[]
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  userId          String
+  orderNumber     String      @unique
+  status          OrderStatus @default(PENDING)
+
+  // Stripe
+  stripeSessionId   String?   @unique
+  stripePaymentId   String?
+
+  // Totals (in cents)
+  subtotal        Int
+  shipping        Int
+  tax             Int
+  total           Int
+
+  // Shipping
+  shippingAddressId String?
+  shippingMethod    String?
+  trackingNumber    String?
+
+  // Notes
+  customerNotes   String?
+  adminNotes      String?
+
+  paidAt          DateTime?
+  shippedAt       DateTime?
+  deliveredAt     DateTime?
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user            User        @relation(fields: [userId], references: [id])
+  shippingAddress Address?    @relation(fields: [shippingAddressId], references: [id])
+  items           OrderItem[]
+  shopJobs        ShopJob[]
+}
+
+model OrderItem {
+  id           String  @id @default(cuid())
+  orderId      String
+  productId    String?
+  foamOptionId String?
+  uploadId     String?
+
+  name         String
+  description  String?
+  quantity     Int
+  unitPrice    Int     // in cents
+  totalPrice   Int     // in cents
+
+  // Custom cut details
+  isCustomCut  Boolean @default(false)
+
+  order      Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product    Product?    @relation(fields: [productId], references: [id])
+  foamOption FoamOption? @relation(fields: [foamOptionId], references: [id])
+  upload     Upload?     @relation(fields: [uploadId], references: [id])
+  shopJob    ShopJob?
+}
+
+enum ShopJobStatus {
+  QUEUED
+  IN_PROGRESS
+  CUTTING
+  QC
+  COMPLETED
+  CANCELLED
+}
+
+model ShopJob {
+  id           String        @id @default(cuid())
+  orderId      String
+  orderItemId  String        @unique
+  status       ShopJobStatus @default(QUEUED)
+
+  // Job details
+  priority     Int           @default(0)
+  assignedTo   String?
+
+  // Cut file
+  dxfUrl       String?
+
+  // Timestamps
+  startedAt    DateTime?
+  cuttingAt    DateTime?
+  qcAt         DateTime?
+  completedAt  DateTime?
+
+  notes        String?
+
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+}
+
+model CartItem {
+  id           String   @id @default(cuid())
+  userId       String?
+  sessionId    String?  // For guest carts
+  productId    String?
+  foamOptionId String?
+  uploadId     String?
+
+  quantity     Int      @default(1)
+  isCustomCut  Boolean  @default(false)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user       User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product    Product?    @relation(fields: [productId], references: [id])
+  foamOption FoamOption? @relation(fields: [foamOptionId], references: [id])
+  upload     Upload?     @relation(fields: [uploadId], references: [id])
+
+  @@index([userId])
+  @@index([sessionId])
+}
