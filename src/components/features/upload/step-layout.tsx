@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ArrowLeft, RotateCw, Trash2, ZoomIn, ZoomOut, Copy, Plus, Minus, Settings2, Image as ImageIcon, ImageOff, Package, Search, X } from "lucide-react";
+import { ArrowLeft, RotateCw, Trash2, ZoomIn, ZoomOut, Copy, Plus, Minus, Settings2, Image as ImageIcon, ImageOff, Package, Search, X, Box, Layers } from "lucide-react";
+import { Foam3DPreview } from "./foam-3d-preview";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -534,6 +535,7 @@ export function StepLayout({
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [sourceImage, setSourceImage] = useState<HTMLImageElement | null>(null);
   const [showPresetPicker, setShowPresetPicker] = useState(false);
+  const [show3DPreview, setShow3DPreview] = useState(false);
 
   // Load source image for preview
   useEffect(() => {
@@ -1164,122 +1166,195 @@ export function StepLayout({
       <div className="flex flex-col lg:grid lg:grid-cols-4 gap-4 lg:gap-6">
         {/* Canvas Area */}
         <div className="lg:col-span-3 order-1">
-          <div
-            ref={containerRef}
-            className="bg-carbon rounded-[4px] overflow-auto max-h-[50vh] sm:max-h-[60vh] lg:max-h-[600px]"
-          >
-            <canvas
-              ref={canvasRef}
-              className="block cursor-move touch-none"
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
-              onTouchStart={(e) => {
-                e.preventDefault();
-                const touch = e.touches[0];
-                const rect = canvasRef.current?.getBoundingClientRect();
-                if (!rect) return;
-                const syntheticEvent = {
-                  clientX: touch.clientX,
-                  clientY: touch.clientY,
-                } as React.MouseEvent<HTMLCanvasElement>;
-                handleMouseDown(syntheticEvent);
-              }}
-              onTouchMove={(e) => {
-                e.preventDefault();
-                const touch = e.touches[0];
-                const syntheticEvent = {
-                  clientX: touch.clientX,
-                  clientY: touch.clientY,
-                } as React.MouseEvent<HTMLCanvasElement>;
-                handleMouseMove(syntheticEvent);
-              }}
-              onTouchEnd={(e) => {
-                e.preventDefault();
-                handleMouseUp();
-              }}
-            />
+          {/* 2D/3D Toggle Header */}
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShow3DPreview(false)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors",
+                  !show3DPreview
+                    ? "bg-accent text-white"
+                    : "bg-carbon text-text-muted hover:text-white"
+                )}
+              >
+                <Layers className="w-4 h-4" />
+                2D Layout
+              </button>
+              <button
+                onClick={() => setShow3DPreview(true)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors",
+                  show3DPreview
+                    ? "bg-accent text-white"
+                    : "bg-carbon text-text-muted hover:text-white"
+                )}
+              >
+                <Box className="w-4 h-4" />
+                3D Preview
+              </button>
+            </div>
+            {show3DPreview && (
+              <span className="text-xs text-text-muted">Drag to rotate</span>
+            )}
           </div>
+
+          {/* 2D Canvas View */}
+          {!show3DPreview && (
+            <div
+              ref={containerRef}
+              className="bg-carbon rounded-[4px] overflow-auto max-h-[50vh] sm:max-h-[60vh] lg:max-h-[600px]"
+            >
+              <canvas
+                ref={canvasRef}
+                className="block cursor-move touch-none"
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                onTouchStart={(e) => {
+                  e.preventDefault();
+                  const touch = e.touches[0];
+                  const rect = canvasRef.current?.getBoundingClientRect();
+                  if (!rect) return;
+                  const syntheticEvent = {
+                    clientX: touch.clientX,
+                    clientY: touch.clientY,
+                  } as React.MouseEvent<HTMLCanvasElement>;
+                  handleMouseDown(syntheticEvent);
+                }}
+                onTouchMove={(e) => {
+                  e.preventDefault();
+                  const touch = e.touches[0];
+                  const syntheticEvent = {
+                    clientX: touch.clientX,
+                    clientY: touch.clientY,
+                  } as React.MouseEvent<HTMLCanvasElement>;
+                  handleMouseMove(syntheticEvent);
+                }}
+                onTouchEnd={(e) => {
+                  e.preventDefault();
+                  handleMouseUp();
+                }}
+              />
+            </div>
+          )}
+
+          {/* 3D Preview View */}
+          {show3DPreview && (
+            <div className="bg-carbon rounded-[4px] overflow-hidden h-[50vh] sm:h-[60vh] lg:h-[600px]">
+              <Foam3DPreview
+                caseWidth={currentCase.innerWidth}
+                caseHeight={currentCase.innerHeight}
+                foamDepth={2.5}
+                items={layoutItems.map(item => ({
+                  id: item.id,
+                  name: item.name,
+                  points: item.points,
+                  x: item.x,
+                  y: item.y,
+                  width: item.width,
+                  height: item.height,
+                  depth: item.depth,
+                  color: item.color,
+                }))}
+              />
+            </div>
+          )}
 
           {/* Toolbar */}
           <div className="flex flex-wrap items-center gap-1 sm:gap-2 mt-3 sm:mt-4 p-2 bg-carbon rounded-[4px]">
-            {/* Zoom Controls */}
-            <div className="flex items-center gap-1 pr-2 border-r border-border">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setZoom(z => Math.max(0.25, z - 0.25))}
-                title="Zoom out"
-                className="p-1.5 sm:p-2"
-              >
-                <ZoomOut className="w-4 h-4" />
-              </Button>
-              <span className="text-xs text-text-muted w-8 sm:w-12 text-center">
-                {Math.round(zoom * 100)}%
-              </span>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setZoom(z => Math.min(2, z + 0.25))}
-                title="Zoom in"
-                className="p-1.5 sm:p-2"
-              >
-                <ZoomIn className="w-4 h-4" />
-              </Button>
-            </div>
+            {/* Zoom Controls - Only in 2D mode */}
+            {!show3DPreview && (
+              <div className="flex items-center gap-1 pr-2 border-r border-border">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setZoom(z => Math.max(0.25, z - 0.25))}
+                  title="Zoom out"
+                  className="p-1.5 sm:p-2"
+                >
+                  <ZoomOut className="w-4 h-4" />
+                </Button>
+                <span className="text-xs text-text-muted w-8 sm:w-12 text-center">
+                  {Math.round(zoom * 100)}%
+                </span>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setZoom(z => Math.min(2, z + 0.25))}
+                  title="Zoom in"
+                  className="p-1.5 sm:p-2"
+                >
+                  <ZoomIn className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
 
-            {/* View Toggle */}
-            <Button
-              variant={showImagePreview ? "default" : "secondary"}
-              size="sm"
-              onClick={() => setShowImagePreview(!showImagePreview)}
-              title={showImagePreview ? "Hide preview" : "Show preview"}
-              className="p-1.5 sm:p-2"
-            >
-              {showImagePreview ? <ImageIcon className="w-4 h-4" /> : <ImageOff className="w-4 h-4" />}
-            </Button>
+            {/* View Toggle - Only in 2D mode */}
+            {!show3DPreview && (
+              <Button
+                variant={showImagePreview ? "default" : "secondary"}
+                size="sm"
+                onClick={() => setShowImagePreview(!showImagePreview)}
+                title={showImagePreview ? "Hide preview" : "Show preview"}
+                className="p-1.5 sm:p-2"
+              >
+                {showImagePreview ? <ImageIcon className="w-4 h-4" /> : <ImageOff className="w-4 h-4" />}
+              </Button>
+            )}
+
+            {/* 3D mode info */}
+            {show3DPreview && (
+              <div className="text-xs text-text-muted">
+                Use mouse to orbit, scroll to zoom
+              </div>
+            )}
 
             {/* Spacer */}
             <div className="flex-1 min-w-0" />
 
-            {/* Action Buttons */}
-            <Button variant="secondary" size="sm" onClick={autoArrange} title="Auto-arrange items" className="text-xs sm:text-sm px-2 sm:px-3">
-              <span className="hidden sm:inline">Auto-Arrange</span>
-              <span className="sm:hidden">Arrange</span>
-            </Button>
+            {/* Action Buttons - Only in 2D mode */}
+            {!show3DPreview && (
+              <>
+                <Button variant="secondary" size="sm" onClick={autoArrange} title="Auto-arrange items" className="text-xs sm:text-sm px-2 sm:px-3">
+                  <span className="hidden sm:inline">Auto-Arrange</span>
+                  <span className="sm:hidden">Arrange</span>
+                </Button>
 
-            {/* Item Actions (only when item selected) */}
-            {selectedItemId && (
-              <div className="flex items-center gap-1 pl-1 sm:pl-2 border-l border-border">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={rotateSelected}
-                  title="Rotate 90°"
-                  className="p-1.5 sm:p-2"
-                >
-                  <RotateCw className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={duplicateSelected}
-                  title="Duplicate"
-                  className="p-1.5 sm:p-2"
-                >
-                  <Copy className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={deleteSelected}
-                  title="Remove"
-                  className="hover:bg-error/20 hover:text-error p-1.5 sm:p-2"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
+                {/* Item Actions (only when item selected) */}
+                {selectedItemId && (
+                  <div className="flex items-center gap-1 pl-1 sm:pl-2 border-l border-border">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={rotateSelected}
+                      title="Rotate 90°"
+                      className="p-1.5 sm:p-2"
+                    >
+                      <RotateCw className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={duplicateSelected}
+                      title="Duplicate"
+                      className="p-1.5 sm:p-2"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={deleteSelected}
+                      title="Remove"
+                      className="hover:bg-error/20 hover:text-error p-1.5 sm:p-2"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
