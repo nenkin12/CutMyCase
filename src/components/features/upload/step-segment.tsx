@@ -61,7 +61,8 @@ export function StepSegment({
     if (!canvas || !container) return;
 
     const img = new Image();
-    img.crossOrigin = "anonymous";
+    // Don't use crossOrigin for display - only needed when reading pixels
+    // crossOrigin can block loading if CORS isn't configured
     img.onload = () => {
       const containerWidth = container.clientWidth;
       const newScale = Math.min(1, containerWidth / imageWidth);
@@ -80,6 +81,10 @@ export function StepSegment({
         overlay.width = canvas.width;
         overlay.height = canvas.height;
       }
+    };
+    img.onerror = (e) => {
+      console.error("Failed to load image:", imageUrl, e);
+      setError("Failed to load image. Please go back and re-upload.");
     };
     img.src = imageUrl;
   }, [imageUrl, imageWidth, imageHeight]);
