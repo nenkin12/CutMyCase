@@ -94,22 +94,11 @@ export function StepUpload({ onComplete }: StepUploadProps) {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadPhase, setUploadPhase] = useState(0);
   const [rotation, setRotation] = useState(0);
-  const [showRulesModal, setShowRulesModal] = useState(false);
-  const [hasReadRules, setHasReadRules] = useState(false);
+  const [showRulesModal, setShowRulesModal] = useState(true);
 
   const rotateImage = () => {
     setRotation((prev) => (prev + 90) % 360);
   };
-
-  // Show rules modal on first visit
-  useEffect(() => {
-    const hasSeenRules = sessionStorage.getItem('cutmycase-seen-rules');
-    if (!hasSeenRules) {
-      setShowRulesModal(true);
-    } else {
-      setHasReadRules(true);
-    }
-  }, []);
 
   useEffect(() => {
     if (!isUploading) {
@@ -264,11 +253,7 @@ export function StepUpload({ onComplete }: StepUploadProps) {
             </ul>
 
             <Button
-              onClick={() => {
-                setHasReadRules(true);
-                setShowRulesModal(false);
-                sessionStorage.setItem('cutmycase-seen-rules', 'true');
-              }}
+              onClick={() => setShowRulesModal(false)}
               className="w-full"
             >
               I Understand
