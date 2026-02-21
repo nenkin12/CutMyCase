@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN!;
+// Increase timeout for this route (Netlify max is 26s)
+export const maxDuration = 25;
+
+const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
 const MAX_IMAGE_DIMENSION = 1024; // Resize to prevent CUDA OOM
 
 async function resizeImageForSegmentation(imageUrl: string): Promise<string> {

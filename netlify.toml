@@ -7,3 +7,8 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+[functions]
+  # Increase timeout for API functions (max 26 seconds on free tier)
+  external_node_modules = ["sharp"]
+  node_bundler = "esbuild"
