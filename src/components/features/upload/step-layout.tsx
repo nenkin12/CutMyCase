@@ -826,35 +826,134 @@ export function StepLayout({
   };
 
   const autoArrange = () => {
-    // Simple left-to-right, top-to-bottom arrangement
-    const sorted = [...layoutItems].sort((a, b) => (b.width * b.height) - (a.width * a.height));
-    const padding = 0.25; // inches between items
+    // Smart auto-arrange: group similar items together for an organized, aesthetic layout
+    const padding = 0.3; // inches between items
+    const groupPadding = 0.5; // extra padding between groups
     const safeAreaStart = BORDER_MARGIN; // 1 inch margin from edges
     const safeAreaWidth = currentCase.innerWidth - 2 * BORDER_MARGIN;
     const safeAreaHeight = currentCase.innerHeight - 2 * BORDER_MARGIN;
 
+    // Extract the base name/type from an item name (removes numbers, "copy", etc.)
+    const getItemType = (name: string): string => {
+      return name
+        .toLowerCase()
+        .replace(/[0-9]+/g, '') // Remove numbers
+        .replace(/copy/gi, '') // Remove "copy"
+        .replace(/_+/g, ' ') // Replace underscores with spaces
+        .replace(/\s+/g, ' ') // Normalize spaces
+        .trim();
+    };
+
+    // Group items by their type
+    const groups = new Map<string, LayoutItem[]>();
+    layoutItems.forEach(item => {
+      const type = getItemType(item.name);
+      if (!groups.has(type)) {
+        groups.set(type, []);
+      }
+      groups.get(type)!.push(item);
+    });
+
+    // Sort groups: larger total area first (more important items get prime placement)
+    const sortedGroups = Array.from(groups.entries()).sort((a, b) => {
+      const areaA = a[1].reduce((sum, item) => sum + item.width * item.height, 0);
+      const areaB = b[1].reduce((sum, item) => sum + item.width * item.height, 0);
+      return areaB - areaA;
+    });
+
+    // Within each group, sort items by size (largest first) for consistent look
+    sortedGroups.forEach(([, items]) => {
+      items.sort((a, b) => (b.width * b.height) - (a.width * a.height));
+    });
+
+    // Arrange items group by group
+    const arranged: LayoutItem[] = [];
     let currentX = safeAreaStart;
     let currentY = safeAreaStart;
     let rowHeight = 0;
+    let isFirstInGroup = true;
 
-    const arranged = sorted.map(item => {
-      // Check if item fits in current row within safe area
-      if (currentX + item.width > safeAreaStart + safeAreaWidth) {
-        currentX = safeAreaStart;
-        currentY += rowHeight + padding;
-        rowHeight = 0;
+    sortedGroups.forEach(([groupType, items], groupIndex) => {
+      // Add extra spacing between groups (but not before first group)
+      if (groupIndex > 0 && !isFirstInGroup) {
+        // Try to start a new row for new group if we're not at the start
+        if (currentX > safeAreaStart + 1) {
+          currentX = safeAreaStart;
+          currentY += rowHeight + groupPadding;
+          rowHeight = 0;
+        }
       }
 
-      const newItem = {
-        ...item,
-        x: currentX,
-        y: currentY,
-      };
+      isFirstInGroup = true;
 
-      currentX += item.width + padding;
-      rowHeight = Math.max(rowHeight, item.height);
+      // Check if all items in this group are similar size (for grid alignment)
+      const avgWidth = items.reduce((sum, i) => sum + i.width, 0) / items.length;
+      const avgHeight = items.reduce((sum, i) => sum + i.height, 0) / items.length;
+      const isSimilarSize = items.every(i =>
+        Math.abs(i.width - avgWidth) < 0.5 && Math.abs(i.height - avgHeight) < 0.5
+      );
 
-      return newItem;
+      // For similar-sized items (like magazines, batteries), try to align in a grid
+      if (isSimilarSize && items.length > 1) {
+        // Calculate how many can fit per row
+        const itemsPerRow = Math.floor((safeAreaWidth - (currentX - safeAreaStart)) / (avgWidth + padding)) || 1;
+
+        // If we can't fit even one, start new row
+        if (currentX + avgWidth > safeAreaStart + safeAreaWidth) {
+          currentX = safeAreaStart;
+          currentY += rowHeight + padding;
+          rowHeight = 0;
+        }
+
+        const groupStartX = currentX;
+        let groupRowCount = 0;
+
+        items.forEach((item, idx) => {
+          // Check if item fits in current row
+          if (currentX + item.width > safeAreaStart + safeAreaWidth) {
+            currentX = groupStartX; // Align with group start for visual consistency
+            currentY += rowHeight + padding;
+            rowHeight = 0;
+            groupRowCount++;
+          }
+
+          arranged.push({
+            ...item,
+            x: currentX,
+            y: currentY,
+          });
+
+          currentX += item.width + padding;
+          rowHeight = Math.max(rowHeight, item.height);
+          isFirstInGroup = false;
+        });
+
+        // After placing a grid group, move to next row for next group
+        currentX = safeAreaStart;
+        currentY += rowHeight + groupPadding;
+        rowHeight = 0;
+
+      } else {
+        // For mixed-size items, place them in order
+        items.forEach(item => {
+          // Check if item fits in current row within safe area
+          if (currentX + item.width > safeAreaStart + safeAreaWidth) {
+            currentX = safeAreaStart;
+            currentY += rowHeight + padding;
+            rowHeight = 0;
+          }
+
+          arranged.push({
+            ...item,
+            x: currentX,
+            y: currentY,
+          });
+
+          currentX += item.width + padding;
+          rowHeight = Math.max(rowHeight, item.height);
+          isFirstInGroup = false;
+        });
+      }
     });
 
     setLayoutItems(arranged);
