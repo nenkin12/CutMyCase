@@ -39,7 +39,7 @@ export const metadata: Metadata = {
     siteName: "CutMyCase",
     images: [
       {
-        url: "/og-image.png",
+        url: "/og-image.jpg",
         width: 1200,
         height: 630,
         alt: "CutMyCase - AI-Powered Custom Foam Inserts",
@@ -51,7 +51,7 @@ export const metadata: Metadata = {
     title: "CutMyCase - Custom Foam Inserts, Cut to Perfection",
     description:
       "Upload a photo of your gear. Our AI designs the perfect foam insert. CNC precision-cut and shipped to your door.",
-    images: ["/og-image.png"],
+    images: ["/og-image.jpg"],
   },
 };
 
