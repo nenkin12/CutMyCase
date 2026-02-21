@@ -1,11 +1,25 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
-import { RefreshCw, Eye, Package, Scan, Layout, ShoppingCart, CheckCircle, ArrowLeft } from "lucide-react";
+import { RefreshCw, Eye, Package, Scan, Layout, ShoppingCart, CheckCircle, Save, Brain, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+
+interface DesignItem {
+  id: string;
+  name: string;
+  points: number[][];
+  color: string;
+  depth?: number;
+  width?: number;
+  height?: number;
+  aiCategory?: string;
+  aiPrompt?: string;
+  aiConfidence?: number;
+  correctedName?: string;
+}
 
 interface Design {
   id: string;
@@ -14,15 +28,7 @@ interface Design {
   imageUrl: string;
   imageWidth: number;
   imageHeight: number;
-  items: Array<{
-    id: string;
-    name: string;
-    points: number[][];
-    color: string;
-    depth?: number;
-    width?: number;
-    height?: number;
-  }>;
+  items: DesignItem[];
   calibration?: {
     pixelsPerInch: number;
     referenceType?: string;
@@ -42,6 +48,9 @@ interface Design {
   customerInfo?: {
     needsCase: boolean;
   };
+  reviewed?: boolean;
+  reviewedAt?: string;
+  reviewNotes?: string;
 }
 
 const statusConfig = {
@@ -52,11 +61,255 @@ const statusConfig = {
   submitted: { label: "Submitted", icon: CheckCircle, color: "bg-green-500" },
 };
 
+const AI_CATEGORIES = [
+  "firearm",
+  "magazine",
+  "suppressor",
+  "optic",
+  "knife",
+  "tool",
+  "flashlight",
+  "accessory",
+  "ear_protection",
+  "eye_protection",
+  "medical",
+  "electronics",
+  "other",
+];
+
+// Component to draw the outline shape
+function OutlineCanvas({
+  item,
+  imageUrl,
+  imageWidth,
+  imageHeight,
+  isSelected,
+  onClick
+}: {
+  item: DesignItem;
+  imageUrl: string;
+  imageWidth: number;
+  imageHeight: number;
+  isSelected: boolean;
+  onClick: () => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !item.points || item.points.length < 3) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Calculate bounding box
+    const xs = item.points.map(p => p[0]);
+    const ys = item.points.map(p => p[1]);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    const maxX = Math.max(...xs);
+    const maxY = Math.max(...ys);
+    const width = maxX - minX;
+    const height = maxY - minY;
+
+    // Set canvas size with padding
+    const padding = 10;
+    const scale = Math.min(150 / width, 150 / height, 1);
+    canvas.width = width * scale + padding * 2;
+    canvas.height = height * scale + padding * 2;
+
+    // Clear and set background
+    ctx.fillStyle = "#0d0d0d";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw the outline
+    ctx.save();
+    ctx.translate(padding, padding);
+    ctx.scale(scale, scale);
+    ctx.translate(-minX, -minY);
+
+    // Fill
+    ctx.beginPath();
+    ctx.moveTo(item.points[0][0], item.points[0][1]);
+    for (let i = 1; i < item.points.length; i++) {
+      ctx.lineTo(item.points[i][0], item.points[i][1]);
+    }
+    ctx.closePath();
+    ctx.fillStyle = item.color + "40";
+    ctx.fill();
+
+    // Stroke
+    ctx.strokeStyle = item.color;
+    ctx.lineWidth = 2 / scale;
+    ctx.stroke();
+
+    ctx.restore();
+    setLoaded(true);
+  }, [item]);
+
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "relative rounded-lg overflow-hidden transition-all",
+        isSelected ? "ring-2 ring-accent" : "hover:ring-1 hover:ring-accent/50"
+      )}
+    >
+      <canvas ref={canvasRef} className="w-full h-auto" />
+      <div className="absolute bottom-0 left-0 right-0 bg-black/80 px-2 py-1">
+        <p className="text-xs truncate">{item.correctedName || item.name}</p>
+      </div>
+    </button>
+  );
+}
+
+// Component for the full design preview with all outlines
+function DesignPreviewCanvas({
+  design,
+  selectedItemId,
+  onSelectItem
+}: {
+  design: Design;
+  selectedItemId: string | null;
+  onSelectItem: (id: string) => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container || !design.imageWidth) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Calculate scale to fit container
+    const containerWidth = container.clientWidth;
+    const calculatedScale = Math.min(containerWidth / design.imageWidth, 400 / design.imageHeight);
+    setScale(calculatedScale);
+
+    canvas.width = design.imageWidth * calculatedScale;
+    canvas.height = design.imageHeight * calculatedScale;
+
+    // Dark background
+    ctx.fillStyle = "#0d0d0d";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw grid
+    ctx.strokeStyle = "#222";
+    ctx.lineWidth = 0.5;
+    const gridSize = 50 * calculatedScale;
+    for (let x = 0; x < canvas.width; x += gridSize) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, canvas.height);
+      ctx.stroke();
+    }
+    for (let y = 0; y < canvas.height; y += gridSize) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(canvas.width, y);
+      ctx.stroke();
+    }
+
+    // Draw each item outline
+    design.items.forEach((item) => {
+      if (!item.points || item.points.length < 3) return;
+
+      const isSelected = item.id === selectedItemId;
+
+      ctx.save();
+      ctx.scale(calculatedScale, calculatedScale);
+
+      // Draw fill
+      ctx.beginPath();
+      ctx.moveTo(item.points[0][0], item.points[0][1]);
+      for (let i = 1; i < item.points.length; i++) {
+        ctx.lineTo(item.points[i][0], item.points[i][1]);
+      }
+      ctx.closePath();
+
+      ctx.fillStyle = isSelected ? item.color + "60" : item.color + "30";
+      ctx.fill();
+
+      // Draw stroke
+      ctx.strokeStyle = isSelected ? "#FF4D00" : item.color;
+      ctx.lineWidth = isSelected ? 3 / calculatedScale : 2 / calculatedScale;
+      ctx.stroke();
+
+      // Draw label
+      const xs = item.points.map(p => p[0]);
+      const ys = item.points.map(p => p[1]);
+      const centerX = (Math.min(...xs) + Math.max(...xs)) / 2;
+      const centerY = (Math.min(...ys) + Math.max(...ys)) / 2;
+
+      ctx.fillStyle = isSelected ? "#FF4D00" : "#fff";
+      ctx.font = `${12 / calculatedScale}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(item.correctedName || item.name, centerX, centerY);
+
+      ctx.restore();
+    });
+  }, [design, selectedItemId]);
+
+  useEffect(() => {
+    draw();
+  }, [draw]);
+
+  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / scale;
+    const y = (e.clientY - rect.top) / scale;
+
+    // Find clicked item (check if point is inside polygon)
+    for (const item of design.items) {
+      if (!item.points || item.points.length < 3) continue;
+
+      // Simple bounding box check
+      const xs = item.points.map(p => p[0]);
+      const ys = item.points.map(p => p[1]);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+
+      if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+        onSelectItem(item.id);
+        return;
+      }
+    }
+  };
+
+  return (
+    <div ref={containerRef} className="w-full">
+      <canvas
+        ref={canvasRef}
+        className="w-full h-auto cursor-pointer rounded-lg"
+        onClick={handleClick}
+      />
+    </div>
+  );
+}
+
 export default function DesignsPage() {
   const [designs, setDesigns] = useState<Design[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDesign, setSelectedDesign] = useState<Design | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>("all");
+  const [saving, setSaving] = useState(false);
+
+  // Edit states for selected item
+  const [editCategory, setEditCategory] = useState("");
+  const [editPrompt, setEditPrompt] = useState("");
+  const [editName, setEditName] = useState("");
 
   const fetchDesigns = async () => {
     setLoading(true);
@@ -76,6 +329,61 @@ export default function DesignsPage() {
   useEffect(() => {
     fetchDesigns();
   }, []);
+
+  // When selecting an item, load its current values
+  useEffect(() => {
+    if (selectedDesign && selectedItemId) {
+      const item = selectedDesign.items.find(i => i.id === selectedItemId);
+      if (item) {
+        setEditCategory(item.aiCategory || "");
+        setEditPrompt(item.aiPrompt || "");
+        setEditName(item.correctedName || item.name);
+      }
+    }
+  }, [selectedDesign, selectedItemId]);
+
+  const selectedItem = selectedDesign?.items.find(i => i.id === selectedItemId);
+
+  const saveItemFeedback = async () => {
+    if (!selectedDesign || !selectedItemId) return;
+
+    setSaving(true);
+    try {
+      // Update the item in the design
+      const updatedItems = selectedDesign.items.map(item => {
+        if (item.id === selectedItemId) {
+          return {
+            ...item,
+            aiCategory: editCategory,
+            aiPrompt: editPrompt,
+            correctedName: editName !== item.name ? editName : undefined,
+          };
+        }
+        return item;
+      });
+
+      const res = await fetch("/api/designs", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: selectedDesign.id,
+          items: updatedItems,
+          reviewed: true,
+          reviewedAt: new Date().toISOString(),
+        }),
+      });
+
+      if (res.ok) {
+        const updated = await res.json();
+        setDesigns(prev => prev.map(d => d.id === updated.id ? updated : d));
+        setSelectedDesign(updated);
+      }
+    } catch (error) {
+      console.error("Failed to save feedback:", error);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const filteredDesigns = filter === "all"
     ? designs
@@ -106,14 +414,11 @@ export default function DesignsPage() {
               <Link href="/admin" className="text-text-secondary hover:text-white">
                 Dashboard
               </Link>
-              <Link href="/admin/orders" className="text-text-secondary hover:text-white">
-                Orders
-              </Link>
               <Link href="/admin/designs" className="text-accent">
                 Designs
               </Link>
-              <Link href="/admin/queue" className="text-text-secondary hover:text-white">
-                Queue
+              <Link href="/" className="text-text-secondary hover:text-white">
+                View Site
               </Link>
             </nav>
           </div>
@@ -122,7 +427,10 @@ export default function DesignsPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-2xl sm:text-3xl font-heading">Scanned Designs</h1>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-heading">AI Training Center</h1>
+            <p className="text-text-muted text-sm mt-1">Review designs and help the AI learn to identify items better</p>
+          </div>
           <Button variant="secondary" size="sm" onClick={fetchDesigns} disabled={loading}>
             <RefreshCw className={cn("w-4 h-4 mr-2", loading && "animate-spin")} />
             Refresh
@@ -159,9 +467,9 @@ export default function DesignsPage() {
           ))}
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-6">
+        <div className="grid lg:grid-cols-2 gap-6">
           {/* Designs List */}
-          <div className="lg:col-span-2 space-y-4">
+          <div className="space-y-4">
             <h2 className="text-lg font-heading">
               {filter === "all" ? "All Designs" : `${statusConfig[filter as keyof typeof statusConfig]?.label} Designs`}
               <span className="text-text-muted ml-2">({filteredDesigns.length})</span>
@@ -185,13 +493,16 @@ export default function DesignsPage() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
                 {filteredDesigns.map((design) => {
                   const config = statusConfig[design.status];
                   return (
                     <button
                       key={design.id}
-                      onClick={() => setSelectedDesign(design)}
+                      onClick={() => {
+                        setSelectedDesign(design);
+                        setSelectedItemId(null);
+                      }}
                       className={cn(
                         "w-full bg-carbon rounded-lg p-3 sm:p-4 text-left transition-colors border",
                         selectedDesign?.id === design.id
@@ -220,21 +531,17 @@ export default function DesignsPage() {
                           <div className="flex items-center gap-2 mb-1">
                             <span className={cn("w-2 h-2 rounded-full", config.color)} />
                             <span className="text-sm font-medium">{config.label}</span>
-                            <config.icon className="w-4 h-4 text-text-muted" />
+                            {design.reviewed && (
+                              <span className="text-xs bg-success/20 text-success px-1.5 py-0.5 rounded">
+                                Reviewed
+                              </span>
+                            )}
                           </div>
-                          <p className="text-xs text-text-muted truncate">
-                            {design.id}
-                          </p>
                           <p className="text-xs text-text-muted">
                             {new Date(design.createdAt).toLocaleString()}
                           </p>
                           <div className="flex items-center gap-4 mt-2 text-xs">
                             <span className="text-accent">{design.items.length} items</span>
-                            {design.layout && (
-                              <span className="text-text-muted hidden sm:inline">
-                                Case: {design.layout.caseName}
-                              </span>
-                            )}
                           </div>
                         </div>
                       </div>
@@ -245,110 +552,147 @@ export default function DesignsPage() {
             )}
           </div>
 
-          {/* Design Detail */}
+          {/* Design Detail & AI Training */}
           <div className="space-y-4">
-            <h2 className="text-lg font-heading">Design Details</h2>
-
             {selectedDesign ? (
-              <Card>
-                <CardContent className="p-4 space-y-4">
-                  {/* Image */}
-                  <div className="aspect-video bg-dark rounded overflow-hidden">
-                    {selectedDesign.imageUrl ? (
-                      <img
-                        src={selectedDesign.imageUrl}
-                        alt="Design"
-                        className="w-full h-full object-contain"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-text-muted">
-                        <Package className="w-12 h-12" />
-                      </div>
-                    )}
-                  </div>
+              <>
+                {/* Visual Preview with Outlines */}
+                <Card>
+                  <CardContent className="p-4">
+                    <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+                      <Eye className="w-4 h-4" />
+                      Outline Preview
+                      <span className="text-text-muted">(click an item to select)</span>
+                    </h3>
+                    <DesignPreviewCanvas
+                      design={selectedDesign}
+                      selectedItemId={selectedItemId}
+                      onSelectItem={setSelectedItemId}
+                    />
+                  </CardContent>
+                </Card>
 
-                  {/* Status */}
-                  <div className="flex items-center gap-2">
-                    <span className={cn("w-3 h-3 rounded-full", statusConfig[selectedDesign.status].color)} />
-                    <span className="font-medium">{statusConfig[selectedDesign.status].label}</span>
-                  </div>
-
-                  {/* Metadata */}
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-text-muted">Created</span>
-                      <span>{new Date(selectedDesign.createdAt).toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-text-muted">Image Size</span>
-                      <span>{selectedDesign.imageWidth} x {selectedDesign.imageHeight}</span>
-                    </div>
-                    {selectedDesign.calibration && (
-                      <div className="flex justify-between">
-                        <span className="text-text-muted">Scale</span>
-                        <span>{selectedDesign.calibration.pixelsPerInch.toFixed(1)} PPI</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Items */}
-                  <div>
-                    <h3 className="text-sm font-medium mb-2">Items ({selectedDesign.items.length})</h3>
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                {/* Item Thumbnails */}
+                <Card>
+                  <CardContent className="p-4">
+                    <h3 className="text-sm font-medium mb-3">
+                      Items ({selectedDesign.items.length})
+                    </h3>
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                       {selectedDesign.items.map((item) => (
-                        <div
+                        <OutlineCanvas
                           key={item.id}
-                          className="flex items-center gap-2 p-2 bg-dark rounded text-sm"
-                        >
-                          <div
-                            className="w-3 h-3 rounded flex-shrink-0"
-                            style={{ backgroundColor: item.color }}
-                          />
-                          <span className="flex-1 truncate">{item.name}</span>
-                          {item.depth && (
-                            <span className="text-text-muted text-xs">{item.depth}" deep</span>
-                          )}
-                        </div>
+                          item={item}
+                          imageUrl={selectedDesign.imageUrl}
+                          imageWidth={selectedDesign.imageWidth}
+                          imageHeight={selectedDesign.imageHeight}
+                          isSelected={item.id === selectedItemId}
+                          onClick={() => setSelectedItemId(item.id)}
+                        />
                       ))}
                     </div>
-                  </div>
+                  </CardContent>
+                </Card>
 
-                  {/* Layout Info */}
-                  {selectedDesign.layout && (
-                    <div>
-                      <h3 className="text-sm font-medium mb-2">Layout</h3>
-                      <div className="p-2 bg-dark rounded text-sm space-y-1">
-                        <div className="flex justify-between">
-                          <span className="text-text-muted">Case</span>
-                          <span>{selectedDesign.layout.caseName}</span>
+                {/* AI Training Panel */}
+                {selectedItem && (
+                  <Card className="border-accent">
+                    <CardContent className="p-4 space-y-4">
+                      <h3 className="text-sm font-medium flex items-center gap-2">
+                        <Brain className="w-4 h-4 text-accent" />
+                        AI Training for: <span className="text-accent">{selectedItem.name}</span>
+                      </h3>
+
+                      {/* Corrected Name */}
+                      <div>
+                        <label className="text-xs text-text-muted block mb-1">
+                          Correct Name (if AI got it wrong)
+                        </label>
+                        <input
+                          type="text"
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          className="w-full px-3 py-2 bg-dark border border-border rounded text-sm focus:outline-none focus:border-accent"
+                          placeholder="e.g., Glock 19"
+                        />
+                      </div>
+
+                      {/* Category */}
+                      <div>
+                        <label className="text-xs text-text-muted block mb-1">
+                          Category
+                        </label>
+                        <select
+                          value={editCategory}
+                          onChange={(e) => setEditCategory(e.target.value)}
+                          className="w-full px-3 py-2 bg-dark border border-border rounded text-sm focus:outline-none focus:border-accent"
+                        >
+                          <option value="">Select category...</option>
+                          {AI_CATEGORIES.map(cat => (
+                            <option key={cat} value={cat}>
+                              {cat.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* AI Training Prompt */}
+                      <div>
+                        <label className="text-xs text-text-muted block mb-1">
+                          <Sparkles className="w-3 h-3 inline mr-1" />
+                          AI Training Notes
+                        </label>
+                        <textarea
+                          value={editPrompt}
+                          onChange={(e) => setEditPrompt(e.target.value)}
+                          rows={3}
+                          className="w-full px-3 py-2 bg-dark border border-border rounded text-sm focus:outline-none focus:border-accent resize-none"
+                          placeholder="Describe this item to help AI learn. e.g., 'This is a compact pistol with mounted red dot optic. The shape should include the optic housing on top.'"
+                        />
+                        <p className="text-xs text-text-muted mt-1">
+                          Help the AI understand what this item is and how to better detect similar items.
+                        </p>
+                      </div>
+
+                      {/* Item Info */}
+                      <div className="grid grid-cols-2 gap-4 text-xs">
+                        <div>
+                          <span className="text-text-muted">Points:</span>
+                          <span className="ml-2">{selectedItem.points?.length || 0}</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-text-muted">Dimensions</span>
-                          <span>{selectedDesign.layout.caseWidth}" x {selectedDesign.layout.caseHeight}"</span>
+                        <div>
+                          <span className="text-text-muted">Depth:</span>
+                          <span className="ml-2">{selectedItem.depth || "N/A"}"</span>
                         </div>
                       </div>
-                    </div>
-                  )}
 
-                  {/* Customer Info */}
-                  {selectedDesign.customerInfo && (
-                    <div>
-                      <h3 className="text-sm font-medium mb-2">Customer</h3>
-                      <div className="p-2 bg-dark rounded text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-text-muted">Needs Case</span>
-                          <span>{selectedDesign.customerInfo.needsCase ? "Yes" : "No"}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                      {/* Save Button */}
+                      <Button
+                        onClick={saveItemFeedback}
+                        disabled={saving}
+                        className="w-full"
+                      >
+                        <Save className="w-4 h-4 mr-2" />
+                        {saving ? "Saving..." : "Save AI Feedback"}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {!selectedItemId && (
+                  <Card>
+                    <CardContent className="py-8 text-center">
+                      <Brain className="w-12 h-12 text-text-muted mx-auto mb-4" />
+                      <p className="text-text-muted">Click an item above to add AI training feedback</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
             ) : (
               <Card>
-                <CardContent className="py-8 text-center">
+                <CardContent className="py-12 text-center">
                   <Eye className="w-12 h-12 text-text-muted mx-auto mb-4" />
-                  <p className="text-text-muted">Select a design to view details</p>
+                  <p className="text-text-muted">Select a design to view and train</p>
                 </CardContent>
               </Card>
             )}

@@ -3,6 +3,21 @@ import { NextRequest, NextResponse } from "next/server";
 const FIREBASE_PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
 const FIRESTORE_URL = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
+interface DesignItem {
+  id: string;
+  name: string;
+  points: number[][];
+  color: string;
+  depth?: number;
+  width?: number;
+  height?: number;
+  // AI training feedback
+  aiCategory?: string; // e.g., "firearm", "magazine", "tool", "accessory"
+  aiPrompt?: string; // Admin feedback to help AI learn
+  aiConfidence?: number; // AI's confidence in detection (0-1)
+  correctedName?: string; // Admin-corrected name if AI got it wrong
+}
+
 interface Design {
   id: string;
   createdAt: string;
@@ -10,15 +25,7 @@ interface Design {
   imageUrl: string;
   imageWidth: number;
   imageHeight: number;
-  items: Array<{
-    id: string;
-    name: string;
-    points: number[][];
-    color: string;
-    depth?: number;
-    width?: number;
-    height?: number;
-  }>;
+  items: DesignItem[];
   calibration?: {
     pixelsPerInch: number;
     referenceType?: string;
@@ -38,6 +45,10 @@ interface Design {
   customerInfo?: {
     needsCase: boolean;
   };
+  // Admin review
+  reviewed?: boolean;
+  reviewedAt?: string;
+  reviewNotes?: string;
 }
 
 // Convert Firestore document to our Design format
