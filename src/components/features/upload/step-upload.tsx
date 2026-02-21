@@ -22,6 +22,55 @@ const UPLOAD_PHASES = [
   { text: "Preparing for detection...", icon: Sparkles },
 ];
 
+const MAX_IMAGE_SIZE = 2500; // Max dimension in pixels - maintains accuracy for detection
+
+// Resize image on client to reduce upload size
+async function resizeImage(file: File): Promise<{ blob: Blob; width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+
+      // Only resize if larger than max
+      if (width > MAX_IMAGE_SIZE || height > MAX_IMAGE_SIZE) {
+        if (width > height) {
+          height = Math.round((height * MAX_IMAGE_SIZE) / width);
+          width = MAX_IMAGE_SIZE;
+        } else {
+          width = Math.round((width * MAX_IMAGE_SIZE) / height);
+          height = MAX_IMAGE_SIZE;
+        }
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Could not get canvas context"));
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            resolve({ blob, width, height });
+          } else {
+            reject(new Error("Could not create blob"));
+          }
+        },
+        "image/jpeg",
+        0.92 // High quality for accurate detection
+      );
+    };
+    img.onerror = () => reject(new Error("Could not load image"));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 export function StepUpload({ onComplete }: StepUploadProps) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -30,7 +79,6 @@ export function StepUpload({ onComplete }: StepUploadProps) {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadPhase, setUploadPhase] = useState(0);
 
-  // Animate progress during upload
   useEffect(() => {
     if (!isUploading) {
       setUploadProgress(0);
@@ -88,24 +136,27 @@ export function StepUpload({ onComplete }: StepUploadProps) {
   });
 
   const handleUpload = async () => {
-    if (!file || !preview) return;
+    if (!file) return;
 
     setIsUploading(true);
     setError(null);
 
     try {
-      const img = new window.Image();
-      img.src = preview;
-      await new Promise((resolve) => {
-        img.onload = resolve;
-      });
+      // Resize image first
+      console.log("Resizing image...");
+      const { blob, width, height } = await resizeImage(file);
+      console.log(`Resized to ${width}x${height}, size: ${(blob.size / 1024).toFixed(0)}KB`);
 
-      let imageUrl = preview;
+      // Create resized preview
+      const resizedPreview = URL.createObjectURL(blob);
+
+      let imageUrl = resizedPreview;
       let uploadId = `local_${Date.now()}`;
 
       try {
+        // Upload resized image via server
         const formData = new FormData();
-        formData.append("file", file);
+        formData.append("file", blob, file.name);
 
         const response = await fetch("/api/upload/firebase", {
           method: "POST",
@@ -116,6 +167,10 @@ export function StepUpload({ onComplete }: StepUploadProps) {
           const data = await response.json();
           imageUrl = data.imageUrl;
           uploadId = data.uploadId;
+          console.log("Uploaded to Firebase:", imageUrl);
+        } else {
+          const errText = await response.text();
+          console.log("Server upload failed:", errText);
         }
       } catch (uploadError) {
         console.log("Upload failed, using local preview:", uploadError);
@@ -127,8 +182,8 @@ export function StepUpload({ onComplete }: StepUploadProps) {
       onComplete({
         uploadId,
         imageUrl,
-        width: img.naturalWidth,
-        height: img.naturalHeight,
+        width,
+        height,
       });
     } catch (err) {
       console.error("Upload error:", err);
@@ -177,7 +232,6 @@ export function StepUpload({ onComplete }: StepUploadProps) {
       ) : (
         <div className="space-y-4">
           <div className="relative bg-carbon rounded-[4px] overflow-hidden">
-            {/* Image */}
             <img
               src={preview}
               alt="Preview"
@@ -187,29 +241,18 @@ export function StepUpload({ onComplete }: StepUploadProps) {
               )}
             />
 
-            {/* AI Processing Overlay */}
             {isUploading && (
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                {/* Scanning line effect */}
                 <div className="absolute inset-0 overflow-hidden">
                   <div
                     className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-accent to-transparent opacity-80"
                     style={{
                       top: `${(uploadProgress % 100)}%`,
                       boxShadow: '0 0 20px 5px rgba(255, 77, 0, 0.5)',
-                      animation: 'scan 2s ease-in-out infinite',
-                    }}
-                  />
-                  <div
-                    className="absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-accent/50 to-transparent"
-                    style={{
-                      top: `${(uploadProgress + 30) % 100}%`,
-                      animation: 'scan 2.5s ease-in-out infinite reverse',
                     }}
                   />
                 </div>
 
-                {/* Grid overlay */}
                 <div
                   className="absolute inset-0 opacity-10"
                   style={{
@@ -221,15 +264,12 @@ export function StepUpload({ onComplete }: StepUploadProps) {
                   }}
                 />
 
-                {/* Corner brackets */}
                 <div className="absolute top-4 left-4 w-8 h-8 border-l-2 border-t-2 border-accent" />
                 <div className="absolute top-4 right-4 w-8 h-8 border-r-2 border-t-2 border-accent" />
                 <div className="absolute bottom-4 left-4 w-8 h-8 border-l-2 border-b-2 border-accent" />
                 <div className="absolute bottom-4 right-4 w-8 h-8 border-r-2 border-b-2 border-accent" />
 
-                {/* Center content */}
                 <div className="relative z-10 text-center px-4">
-                  {/* Animated icon */}
                   <div className="relative mb-4">
                     <div className="absolute inset-0 animate-ping">
                       <CurrentPhaseIcon className="w-12 h-12 mx-auto text-accent opacity-30" />
@@ -237,17 +277,14 @@ export function StepUpload({ onComplete }: StepUploadProps) {
                     <CurrentPhaseIcon className="w-12 h-12 mx-auto text-accent animate-pulse" />
                   </div>
 
-                  {/* Progress percentage */}
                   <div className="text-4xl font-heading text-accent mb-2">
                     {Math.round(uploadProgress)}%
                   </div>
 
-                  {/* Phase text */}
                   <div className="text-sm text-white font-medium mb-4">
                     {UPLOAD_PHASES[uploadPhase].text}
                   </div>
 
-                  {/* Progress bar */}
                   <div className="w-48 mx-auto h-1 bg-white/20 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-gradient-to-r from-accent to-orange-400 transition-all duration-150 ease-out"
@@ -255,25 +292,9 @@ export function StepUpload({ onComplete }: StepUploadProps) {
                     />
                   </div>
                 </div>
-
-                {/* Floating particles */}
-                <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                  {[...Array(6)].map((_, i) => (
-                    <div
-                      key={i}
-                      className="absolute w-1 h-1 bg-accent rounded-full animate-float"
-                      style={{
-                        left: `${20 + i * 15}%`,
-                        animationDelay: `${i * 0.3}s`,
-                        animationDuration: `${2 + i * 0.5}s`,
-                      }}
-                    />
-                  ))}
-                </div>
               </div>
             )}
 
-            {/* Close button (hidden during upload) */}
             {!isUploading && (
               <button
                 onClick={clearFile}
@@ -323,32 +344,6 @@ export function StepUpload({ onComplete }: StepUploadProps) {
           {isUploading ? "Processing..." : "Continue"}
         </Button>
       </div>
-
-      {/* Custom animations */}
-      <style jsx>{`
-        @keyframes scan {
-          0%, 100% { opacity: 0.3; }
-          50% { opacity: 0.8; }
-        }
-        @keyframes float {
-          0%, 100% {
-            transform: translateY(100%) scale(0);
-            opacity: 0;
-          }
-          10% {
-            opacity: 1;
-            transform: translateY(80%) scale(1);
-          }
-          90% {
-            opacity: 1;
-            transform: translateY(20%) scale(1);
-          }
-          100% {
-            transform: translateY(0%) scale(0);
-            opacity: 0;
-          }
-        }
-      `}</style>
     </div>
   );
 }
