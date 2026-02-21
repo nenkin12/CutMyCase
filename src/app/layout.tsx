@@ -28,19 +28,29 @@ export const metadata: Metadata = {
     "camera case foam",
     "CNC cutting",
   ],
+  metadataBase: new URL("https://cutmycase.com"),
   openGraph: {
-    title: "CutMyCase - Custom Foam Inserts",
+    title: "CutMyCase - Custom Foam Inserts, Cut to Perfection",
     description:
-      "AI-designed, CNC precision-cut foam inserts for your cases.",
+      "Upload a photo of your gear. Our AI designs the perfect foam insert. CNC precision-cut and shipped to your door.",
     type: "website",
     locale: "en_US",
     siteName: "CutMyCase",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "CutMyCase - AI-Powered Custom Foam Inserts",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "CutMyCase - Custom Foam Inserts",
+    title: "CutMyCase - Custom Foam Inserts, Cut to Perfection",
     description:
-      "AI-designed, CNC precision-cut foam inserts for your cases.",
+      "Upload a photo of your gear. Our AI designs the perfect foam insert. CNC precision-cut and shipped to your door.",
+    images: ["/og-image.png"],
   },
 };
 
