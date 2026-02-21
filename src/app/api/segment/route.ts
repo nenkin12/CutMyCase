@@ -103,6 +103,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if Replicate token is configured
+    if (!REPLICATE_API_TOKEN) {
+      console.log("REPLICATE_API_TOKEN not configured, returning original image");
+      return NextResponse.json({
+        success: true,
+        mode: "passthrough",
+        cleanedImageUrl: imageUrl,
+        originalImageUrl: imageUrl,
+        message: "Background removal skipped - Replicate API not configured",
+      });
+    }
+
     const isBase64 = imageUrl.startsWith("data:");
     console.log("Segment request - image type:", isBase64 ? "base64" : "url", "points:", points?.length || 0);
 
