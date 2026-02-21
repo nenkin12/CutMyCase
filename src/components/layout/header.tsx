@@ -25,9 +25,11 @@ export function Header() {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-accent rounded-[2px] flex items-center justify-center">
-              <span className="text-white font-heading text-lg">C</span>
-            </div>
+            <img
+              src="/images/logo.png"
+              alt="CutMyCase"
+              className="w-10 h-10 rounded-[4px]"
+            />
             <span className="font-heading text-xl tracking-wider">CUTMYCASE</span>
           </Link>
 

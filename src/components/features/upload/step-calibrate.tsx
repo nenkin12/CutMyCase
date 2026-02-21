@@ -1,45 +1,67 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowLeft, Ruler, Circle, CreditCard, HelpCircle } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { ArrowLeft, Ruler, Circle, CreditCard, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { CalibrationResult } from "@/lib/ai/process-image";
 
+interface SegmentedItem {
+  id: string;
+  name: string;
+  maskUrl: string;
+  points: number[][];
+  color: string;
+  boundingBox?: { x: number; y: number; width: number; height: number };
+  depth?: number; // Depth in inches
+}
+
+// Common foam depths
+const DEPTH_OPTIONS = [
+  { value: 0.5, label: '0.5"', description: "Shallow" },
+  { value: 1, label: '1"', description: "Standard" },
+  { value: 1.5, label: '1.5"', description: "Deep" },
+  { value: 2, label: '2"', description: "Very Deep" },
+  { value: 2.5, label: '2.5"', description: "Extra Deep" },
+  { value: 3, label: '3"', description: "Maximum" },
+];
+
 interface StepCalibrateProps {
   imageUrl: string;
   imageWidth: number;
   imageHeight: number;
+  segmentedItems: SegmentedItem[];
   onComplete: (data: {
     calibration: CalibrationResult | null;
     pixelsPerInch: number;
+    itemDepths: Record<string, number>;
   }) => void;
   onBack: () => void;
 }
 
-type CalibrationMethod = "reference" | "manual" | "known";
+type CalibrationMethod = "select-item" | "manual";
 
-const referenceObjects = [
-  {
-    id: "quarter",
-    name: "US Quarter",
-    size: 0.955,
-    unit: "diameter",
-    icon: Circle,
-  },
+const referenceTypes = [
   {
     id: "credit-card",
     name: "Credit Card",
-    size: 3.375,
-    unit: "width",
+    widthInches: 3.375,
+    heightInches: 2.125,
     icon: CreditCard,
   },
   {
+    id: "quarter",
+    name: "US Quarter",
+    widthInches: 0.955,
+    heightInches: 0.955,
+    icon: Circle,
+  },
+  {
     id: "ruler",
-    name: "Ruler",
-    size: 1,
-    unit: "inch",
+    name: "Ruler (1 inch)",
+    widthInches: 1,
+    heightInches: 1,
     icon: Ruler,
   },
 ];
@@ -48,49 +70,133 @@ export function StepCalibrate({
   imageUrl,
   imageWidth,
   imageHeight,
+  segmentedItems,
   onComplete,
   onBack,
 }: StepCalibrateProps) {
-  const [method, setMethod] = useState<CalibrationMethod>("reference");
-  const [selectedReference, setSelectedReference] = useState<string | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const [method, setMethod] = useState<CalibrationMethod>("select-item");
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [selectedRefType, setSelectedRefType] = useState<string>("credit-card");
   const [manualPPI, setManualPPI] = useState<string>("72");
-  const [isDetecting, setIsDetecting] = useState(false);
-  const [detectedCalibration, setDetectedCalibration] = useState<CalibrationResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [scale, setScale] = useState(1);
 
-  // Drawing state for manual reference selection
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
-  const [endPoint, setEndPoint] = useState<{ x: number; y: number } | null>(null);
+  // Track depth for each item (default to 1.5 inches)
+  const [itemDepths, setItemDepths] = useState<Record<string, number>>(() => {
+    const depths: Record<string, number> = {};
+    segmentedItems.forEach(item => {
+      depths[item.id] = item.depth ?? 1.5;
+    });
+    return depths;
+  });
 
-  const handleAutoDetect = async () => {
-    setIsDetecting(true);
-    setError(null);
+  const updateItemDepth = (itemId: string, depth: number) => {
+    setItemDepths(prev => ({ ...prev, [itemId]: depth }));
+  };
 
-    try {
-      const response = await fetch("/api/upload/calibrate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrl }),
-      });
+  // Load and draw the image with overlays
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
 
-      if (!response.ok) {
-        throw new Error("Failed to detect reference object");
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const containerWidth = container.clientWidth;
+      const newScale = Math.min(1, containerWidth / imageWidth);
+      setScale(newScale);
+
+      canvas.width = imageWidth * newScale;
+      canvas.height = imageHeight * newScale;
+
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        drawOverlays(ctx, newScale);
       }
+    };
+    img.src = imageUrl;
+  }, [imageUrl, imageWidth, imageHeight]);
 
-      const data = await response.json();
-      if (data.calibration) {
-        setDetectedCalibration(data.calibration);
-        setSelectedReference(data.calibration.referenceObject.toLowerCase().replace(" ", "-"));
+  // Redraw overlays when selection changes
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Redraw image
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      drawOverlays(ctx, scale);
+    };
+    img.src = imageUrl;
+  }, [selectedItemId, scale, imageUrl]);
+
+  const drawOverlays = (ctx: CanvasRenderingContext2D, currentScale: number) => {
+    segmentedItems.forEach((item) => {
+      if (item.points.length < 3) return;
+
+      const isSelected = item.id === selectedItemId;
+
+      ctx.beginPath();
+      ctx.moveTo(item.points[0][0] * currentScale, item.points[0][1] * currentScale);
+      for (let i = 1; i < item.points.length; i++) {
+        ctx.lineTo(item.points[i][0] * currentScale, item.points[i][1] * currentScale);
+      }
+      ctx.closePath();
+
+      if (isSelected) {
+        ctx.fillStyle = "#22c55e40";
+        ctx.strokeStyle = "#22c55e";
+        ctx.lineWidth = 3;
       } else {
-        setError("No reference object detected. Please select manually.");
+        ctx.fillStyle = item.color + "30";
+        ctx.strokeStyle = item.color;
+        ctx.lineWidth = 2;
       }
-    } catch (err) {
-      console.error("Calibration error:", err);
-      setError("Failed to auto-detect. Please calibrate manually.");
-    } finally {
-      setIsDetecting(false);
+
+      ctx.fill();
+      ctx.stroke();
+    });
+  };
+
+  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (method !== "select-item") return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / scale;
+    const y = (e.clientY - rect.top) / scale;
+
+    // Check if click is inside any item's polygon
+    for (const item of segmentedItems) {
+      if (isPointInPolygon(x, y, item.points)) {
+        setSelectedItemId(item.id);
+        return;
+      }
     }
+  };
+
+  const isPointInPolygon = (x: number, y: number, points: number[][]): boolean => {
+    let inside = false;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+      const xi = points[i][0], yi = points[i][1];
+      const xj = points[j][0], yj = points[j][1];
+
+      if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+        inside = !inside;
+      }
+    }
+    return inside;
   };
 
   const calculatePPI = (): number => {
@@ -98,32 +204,37 @@ export function StepCalibrate({
       return parseFloat(manualPPI) || 72;
     }
 
-    if (method === "known") {
-      // Default to common camera/phone DPI
-      return 72;
-    }
+    if (selectedItemId && selectedRefType) {
+      const item = segmentedItems.find(i => i.id === selectedItemId);
+      const refType = referenceTypes.find(r => r.id === selectedRefType);
 
-    if (detectedCalibration) {
-      const refObj = referenceObjects.find(
-        (r) => r.id === selectedReference || r.name === detectedCalibration.referenceObject
-      );
-      if (refObj) {
-        const pixelMeasure =
-          detectedCalibration.measureAxis === "width"
-            ? (detectedCalibration.boundingBox.width / 100) * imageWidth
-            : (detectedCalibration.boundingBox.height / 100) * imageHeight;
-        return pixelMeasure / refObj.size;
-      }
-    }
+      if (item && refType && item.points.length > 0) {
+        // Calculate bounding box from points
+        const xs = item.points.map(p => p[0]);
+        const ys = item.points.map(p => p[1]);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
 
-    if (startPoint && endPoint && selectedReference) {
-      const refObj = referenceObjects.find((r) => r.id === selectedReference);
-      if (refObj) {
-        const pixelDistance = Math.sqrt(
-          Math.pow(endPoint.x - startPoint.x, 2) +
-            Math.pow(endPoint.y - startPoint.y, 2)
-        );
-        return pixelDistance / refObj.size;
+        const pixelWidth = maxX - minX;
+        const pixelHeight = maxY - minY;
+
+        // Use the dimension that best matches the reference object's aspect ratio
+        const itemAspect = pixelWidth / pixelHeight;
+        const refAspect = refType.widthInches / refType.heightInches;
+
+        // If aspects are similar, use width; otherwise use the more reliable dimension
+        if (Math.abs(itemAspect - refAspect) < 0.5) {
+          // Use width
+          return pixelWidth / refType.widthInches;
+        } else if (itemAspect > refAspect) {
+          // Item is wider than expected, use height
+          return pixelHeight / refType.heightInches;
+        } else {
+          // Item is taller than expected, use width
+          return pixelWidth / refType.widthInches;
+        }
       }
     }
 
@@ -132,167 +243,224 @@ export function StepCalibrate({
 
   const handleContinue = () => {
     const pixelsPerInch = calculatePPI();
-    onComplete({
-      calibration: detectedCalibration,
-      pixelsPerInch,
-    });
+
+    let calibration: CalibrationResult | null = null;
+    if (selectedItemId) {
+      const item = segmentedItems.find(i => i.id === selectedItemId);
+      const refType = referenceTypes.find(r => r.id === selectedRefType);
+
+      if (item && refType) {
+        const xs = item.points.map(p => p[0]);
+        const ys = item.points.map(p => p[1]);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+
+        calibration = {
+          referenceObject: refType.name,
+          boundingBox: {
+            x: (minX / imageWidth) * 100,
+            y: (minY / imageHeight) * 100,
+            width: ((maxX - minX) / imageWidth) * 100,
+            height: ((maxY - minY) / imageHeight) * 100,
+          },
+          knownDimension: refType.widthInches,
+          dimensionType: "width",
+          measureAxis: "width",
+          confidence: 1.0,
+        };
+      }
+    }
+
+    onComplete({ calibration, pixelsPerInch, itemDepths });
   };
 
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (method !== "reference" || !selectedReference) return;
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    setStartPoint({ x, y });
-    setEndPoint(null);
-    setIsDrawing(true);
-  };
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isDrawing) return;
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    setEndPoint({ x, y });
-  };
-
-  const handleMouseUp = () => {
-    setIsDrawing(false);
-  };
+  const selectedItem = segmentedItems.find(i => i.id === selectedItemId);
+  const selectedRef = referenceTypes.find(r => r.id === selectedRefType);
+  const calculatedPPI = calculatePPI();
 
   return (
     <div className="space-y-6">
       <div className="text-center">
         <h2 className="text-3xl font-heading mb-2">Calibrate Scale</h2>
         <p className="text-text-secondary">
-          Help us understand the real-world dimensions of your items
+          Select a reference object to set the real-world scale
         </p>
       </div>
 
       {/* Method Selection */}
-      <div className="grid grid-cols-3 gap-4">
-        {[
-          { id: "reference", label: "Reference Object", desc: "Use a known object" },
-          { id: "manual", label: "Manual Entry", desc: "Enter pixels per inch" },
-          { id: "known", label: "I Know My Items", desc: "Skip calibration" },
-        ].map((m) => (
-          <button
-            key={m.id}
-            onClick={() => setMethod(m.id as CalibrationMethod)}
-            className={cn(
-              "p-4 rounded-[4px] border text-left transition-colors",
-              method === m.id
-                ? "border-accent bg-accent/10"
-                : "border-border hover:border-accent/50"
-            )}
-          >
-            <h4 className="font-medium text-sm">{m.label}</h4>
-            <p className="text-xs text-text-muted mt-1">{m.desc}</p>
-          </button>
-        ))}
+      <div className="grid grid-cols-2 gap-4">
+        <button
+          onClick={() => setMethod("select-item")}
+          className={cn(
+            "p-4 rounded-[4px] border text-left transition-colors",
+            method === "select-item"
+              ? "border-accent bg-accent/10"
+              : "border-border hover:border-accent/50"
+          )}
+        >
+          <h4 className="font-medium text-sm">Select Reference Item</h4>
+          <p className="text-xs text-text-muted mt-1">Click an item in the image</p>
+        </button>
+        <button
+          onClick={() => setMethod("manual")}
+          className={cn(
+            "p-4 rounded-[4px] border text-left transition-colors",
+            method === "manual"
+              ? "border-accent bg-accent/10"
+              : "border-border hover:border-accent/50"
+          )}
+        >
+          <h4 className="font-medium text-sm">Manual Entry</h4>
+          <p className="text-xs text-text-muted mt-1">Enter pixels per inch</p>
+        </button>
       </div>
 
-      {method === "reference" && (
-        <div className="space-y-4">
-          {/* Reference Object Selection */}
-          <div className="flex gap-4">
-            {referenceObjects.map((ref) => (
-              <button
-                key={ref.id}
-                onClick={() => setSelectedReference(ref.id)}
-                className={cn(
-                  "flex-1 p-4 rounded-[4px] border text-center transition-colors",
-                  selectedReference === ref.id
-                    ? "border-accent bg-accent/10"
-                    : "border-border hover:border-accent/50"
-                )}
-              >
-                <ref.icon className="w-8 h-8 mx-auto mb-2 text-accent" />
-                <h4 className="font-medium text-sm">{ref.name}</h4>
-                <p className="text-xs text-text-muted">
-                  {ref.size}" {ref.unit}
-                </p>
-              </button>
-            ))}
-          </div>
-
-          <div className="flex gap-4">
-            <Button
-              variant="secondary"
-              onClick={handleAutoDetect}
-              isLoading={isDetecting}
-              disabled={isDetecting}
+      {method === "select-item" && (
+        <div className="flex flex-col lg:grid lg:grid-cols-3 gap-4 lg:gap-6">
+          {/* Canvas */}
+          <div className="lg:col-span-2 order-1">
+            <div
+              ref={containerRef}
+              className="relative bg-black rounded-[4px] overflow-hidden"
             >
-              Auto-Detect Reference
-            </Button>
-          </div>
-
-          {/* Image with drawing capability */}
-          <div
-            className="relative bg-carbon rounded-[4px] overflow-hidden cursor-crosshair"
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-          >
-            <img
-              src={imageUrl}
-              alt="Calibration"
-              className="w-full object-contain select-none"
-              draggable={false}
-            />
-
-            {/* Drawing overlay */}
-            {startPoint && endPoint && (
-              <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                <line
-                  x1={startPoint.x}
-                  y1={startPoint.y}
-                  x2={endPoint.x}
-                  y2={endPoint.y}
-                  stroke="#FF4D00"
-                  strokeWidth="2"
-                  strokeDasharray="4"
-                />
-                <circle cx={startPoint.x} cy={startPoint.y} r="4" fill="#FF4D00" />
-                <circle cx={endPoint.x} cy={endPoint.y} r="4" fill="#FF4D00" />
-              </svg>
-            )}
-
-            {/* Detected reference overlay */}
-            {detectedCalibration && (
-              <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                <rect
-                  x={`${detectedCalibration.boundingBox.x}%`}
-                  y={`${detectedCalibration.boundingBox.y}%`}
-                  width={`${detectedCalibration.boundingBox.width}%`}
-                  height={`${detectedCalibration.boundingBox.height}%`}
-                  fill="none"
-                  stroke="#22c55e"
-                  strokeWidth="2"
-                />
-              </svg>
-            )}
-          </div>
-
-          {selectedReference && !detectedCalibration && (
-            <p className="text-sm text-text-secondary flex items-center gap-2">
-              <HelpCircle className="w-4 h-4" />
-              Draw a line across your {referenceObjects.find((r) => r.id === selectedReference)?.name} in the image
-            </p>
-          )}
-
-          {detectedCalibration && (
-            <div className="p-4 bg-success/10 border border-success/30 rounded-[4px] text-success text-sm">
-              Detected: {detectedCalibration.referenceObject} ({Math.round(detectedCalibration.confidence * 100)}% confidence)
+              <canvas
+                ref={canvasRef}
+                className="block cursor-crosshair"
+                onClick={handleCanvasClick}
+              />
             </div>
-          )}
+            <p className="text-sm text-text-muted mt-2">
+              Click on the reference object (e.g., credit card) in the image
+            </p>
+          </div>
+
+          {/* Controls */}
+          <div className="space-y-4 order-2">
+            {/* Reference Type Selection */}
+            <div className="bg-carbon rounded-[4px] p-4">
+              <h3 className="font-heading text-sm mb-3">Reference Type</h3>
+              <div className="space-y-2">
+                {referenceTypes.map((ref) => (
+                  <button
+                    key={ref.id}
+                    onClick={() => setSelectedRefType(ref.id)}
+                    className={cn(
+                      "w-full flex items-center gap-3 p-3 rounded-[4px] border transition-colors",
+                      selectedRefType === ref.id
+                        ? "border-accent bg-accent/10"
+                        : "border-border hover:border-accent/50"
+                    )}
+                  >
+                    <ref.icon className="w-5 h-5 text-accent" />
+                    <div className="text-left flex-1">
+                      <div className="text-sm font-medium">{ref.name}</div>
+                      <div className="text-xs text-text-muted">
+                        {ref.widthInches}" × {ref.heightInches}"
+                      </div>
+                    </div>
+                    {selectedRefType === ref.id && (
+                      <Check className="w-4 h-4 text-accent" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Selected Item Info */}
+            <div className="bg-carbon rounded-[4px] p-4">
+              <h3 className="font-heading text-sm mb-3">Selected Item</h3>
+              {selectedItem ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-4 h-4 rounded"
+                      style={{ backgroundColor: selectedItem.color }}
+                    />
+                    <span className="text-sm">{selectedItem.name}</span>
+                  </div>
+                  <div className="text-xs text-text-muted">
+                    Will be used as: {selectedRef?.name}
+                  </div>
+                  <div className="text-xs text-success mt-2">
+                    Calculated: {calculatedPPI.toFixed(1)} pixels/inch
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-text-muted">
+                  Click an item in the image to select it as the reference
+                </p>
+              )}
+            </div>
+
+            {/* Items List */}
+            <div className="bg-carbon rounded-[4px] p-4">
+              <h3 className="font-heading text-sm mb-3">
+                Detected Items ({segmentedItems.length})
+              </h3>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {segmentedItems.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setSelectedItemId(item.id)}
+                    className={cn(
+                      "w-full flex items-center gap-2 p-2 rounded-[4px] transition-colors",
+                      selectedItemId === item.id
+                        ? "bg-success/20"
+                        : "hover:bg-dark"
+                    )}
+                  >
+                    <div
+                      className="w-3 h-3 rounded"
+                      style={{ backgroundColor: item.color }}
+                    />
+                    <span className="text-sm">{item.name}</span>
+                    {selectedItemId === item.id && (
+                      <Check className="w-4 h-4 text-success ml-auto" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       )}
+
+      {/* Item Depth Selection */}
+      <div className="bg-carbon rounded-[4px] p-4">
+        <h3 className="font-heading text-sm mb-3">Item Depths</h3>
+        <p className="text-xs text-text-muted mb-4">
+          Set the cutout depth for each item in the foam
+        </p>
+        <div className="space-y-3 max-h-64 overflow-y-auto">
+          {segmentedItems
+            .filter(item => !item.name.toLowerCase().includes("card") && !item.name.toLowerCase().includes("quarter"))
+            .map((item) => (
+            <div
+              key={item.id}
+              className="flex items-center gap-3 p-3 bg-dark rounded-[4px]"
+            >
+              <div
+                className="w-3 h-3 rounded shrink-0"
+                style={{ backgroundColor: item.color }}
+              />
+              <span className="text-sm flex-1 truncate">{item.name}</span>
+              <select
+                value={itemDepths[item.id] || 1.5}
+                onChange={(e) => updateItemDepth(item.id, parseFloat(e.target.value))}
+                className="bg-carbon border border-border rounded-[4px] px-2 py-1 text-sm focus:outline-none focus:border-accent"
+              >
+                {DEPTH_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label} - {opt.description}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {method === "manual" && (
         <div className="space-y-4">
@@ -314,27 +482,17 @@ export function StepCalibrate({
         </div>
       )}
 
-      {method === "known" && (
-        <div className="bg-carbon rounded-[4px] p-4">
-          <p className="text-text-secondary text-sm">
-            You can manually adjust item dimensions in the next step. We&apos;ll use
-            estimated dimensions based on detected item types.
-          </p>
-        </div>
-      )}
-
-      {error && (
-        <div className="p-4 bg-error/10 border border-error/30 rounded-[4px] text-error text-sm">
-          {error}
-        </div>
-      )}
-
       <div className="flex justify-between">
         <Button variant="secondary" onClick={onBack}>
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back
         </Button>
-        <Button onClick={handleContinue}>Continue</Button>
+        <Button
+          onClick={handleContinue}
+          disabled={method === "select-item" && !selectedItemId}
+        >
+          Continue
+        </Button>
       </div>
     </div>
   );

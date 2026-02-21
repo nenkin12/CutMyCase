@@ -551,9 +551,11 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <Link href="/" className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-orange-500 rounded flex items-center justify-center">
-                <span className="text-white font-bold text-lg">C</span>
-              </div>
+              <img
+                src="/images/logo.png"
+                alt="CutMyCase"
+                className="w-10 h-10 rounded"
+              />
               <span className="font-bold text-xl tracking-wider">CUTMYCASE</span>
             </Link>
             <nav className="hidden md:flex items-center gap-8">
@@ -750,33 +752,133 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              { step: 1, title: "Upload Your Gear", desc: "Take a photo of your equipment laid out. Our AI identifies each item and measures dimensions automatically.", Icon: UploadIcon },
-              { step: 2, title: "AI Precision Design", desc: "Claude Vision analyzes your gear and creates perfect-fit outlines with optimal spacing and tolerances.", Icon: AIIcon },
-              { step: 3, title: "CNC Cut & Ship", desc: "Your custom foam is precision-cut on industrial CNC machines and shipped ready to drop into your case.", Icon: CNCIcon },
-            ].map((item, index) => (
-              <div key={item.step} className="relative group">
-                <div className="absolute -top-4 -left-4 w-12 h-12 bg-orange-500 text-white font-bold text-2xl rounded flex items-center justify-center z-10">
-                  {item.step}
+          {/* Step 1 */}
+          <div className="grid lg:grid-cols-2 gap-12 items-center mb-20">
+            <div className="order-2 lg:order-1">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 bg-orange-500 text-white font-bold text-2xl rounded flex items-center justify-center">
+                  1
                 </div>
-                <div className="bg-zinc-800 border border-zinc-700 rounded p-8 pt-12 h-full hover:border-orange-500/50 transition-all group-hover:-translate-y-1">
-                  <div className="w-32 h-32 mx-auto mb-6">
-                    <item.Icon />
-                  </div>
-                  <h3 className="text-2xl font-bold mb-3 text-center">{item.title}</h3>
-                  <p className="text-zinc-400 text-center">{item.desc}</p>
-                </div>
-                {index < 2 && (
-                  <div className="hidden md:block absolute top-1/2 -right-4 w-8 text-orange-500 z-20">
-                    <ArrowRight className="w-8 h-8" />
-                  </div>
-                )}
+                <h3 className="text-3xl font-bold">Upload Your Gear</h3>
               </div>
-            ))}
+              <p className="text-zinc-400 text-lg mb-6">
+                Take a photo of your equipment laid out with a reference object (like a credit card).
+                Our AI automatically detects each item and outlines them with precision.
+              </p>
+              <ul className="space-y-3">
+                <li className="flex items-center gap-3 text-zinc-300">
+                  <Check className="w-5 h-5 text-orange-500 flex-shrink-0" />
+                  AI-powered object detection
+                </li>
+                <li className="flex items-center gap-3 text-zinc-300">
+                  <Check className="w-5 h-5 text-orange-500 flex-shrink-0" />
+                  Automatic scale calibration
+                </li>
+                <li className="flex items-center gap-3 text-zinc-300">
+                  <Check className="w-5 h-5 text-orange-500 flex-shrink-0" />
+                  Real-world measurements
+                </li>
+              </ul>
+            </div>
+            <div className="order-1 lg:order-2 relative">
+              <div className="rounded-lg overflow-hidden border border-zinc-700 shadow-2xl">
+                <Image
+                  src="/images/process/step-calibrate.png"
+                  alt="Calibrate step - AI detects items and measures dimensions"
+                  width={1110}
+                  height={948}
+                  className="w-full h-auto"
+                />
+              </div>
+              <div className="absolute -bottom-4 -right-4 w-32 h-32 bg-orange-500/20 rounded-full blur-3xl -z-10" />
+            </div>
           </div>
 
-          <div className="text-center mt-12">
+          {/* Step 2 */}
+          <div className="grid lg:grid-cols-2 gap-12 items-center mb-20">
+            <div className="relative">
+              <div className="rounded-lg overflow-hidden border border-zinc-700 shadow-2xl">
+                <Image
+                  src="/images/process/step-layout-1.png"
+                  alt="Layout step - Arrange items in your case"
+                  width={1110}
+                  height={948}
+                  className="w-full h-auto"
+                />
+              </div>
+              <div className="absolute -bottom-4 -left-4 w-32 h-32 bg-orange-500/20 rounded-full blur-3xl -z-10" />
+            </div>
+            <div>
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 bg-orange-500 text-white font-bold text-2xl rounded flex items-center justify-center">
+                  2
+                </div>
+                <h3 className="text-3xl font-bold">Design Your Layout</h3>
+              </div>
+              <p className="text-zinc-400 text-lg mb-6">
+                Drag and arrange your items in the case. Select from popular case sizes or enter custom dimensions.
+                Our system ensures proper spacing and a 1" safety margin.
+              </p>
+              <ul className="space-y-3">
+                <li className="flex items-center gap-3 text-zinc-300">
+                  <Check className="w-5 h-5 text-orange-500 flex-shrink-0" />
+                  Compatible with Pelican, Nanuk & more
+                </li>
+                <li className="flex items-center gap-3 text-zinc-300">
+                  <Check className="w-5 h-5 text-orange-500 flex-shrink-0" />
+                  Auto-arrange for optimal fit
+                </li>
+                <li className="flex items-center gap-3 text-zinc-300">
+                  <Check className="w-5 h-5 text-orange-500 flex-shrink-0" />
+                  Adjustable smoothing & finger pulls
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          {/* Step 3 */}
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            <div className="order-2 lg:order-1">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 bg-orange-500 text-white font-bold text-2xl rounded flex items-center justify-center">
+                  3
+                </div>
+                <h3 className="text-3xl font-bold">Preview & Order</h3>
+              </div>
+              <p className="text-zinc-400 text-lg mb-6">
+                See exactly how your items will fit with our image preview mode.
+                Once you're happy, order your custom CNC-cut foam and we'll ship it to your door.
+              </p>
+              <ul className="space-y-3">
+                <li className="flex items-center gap-3 text-zinc-300">
+                  <Check className="w-5 h-5 text-orange-500 flex-shrink-0" />
+                  Real-time image preview
+                </li>
+                <li className="flex items-center gap-3 text-zinc-300">
+                  <Check className="w-5 h-5 text-orange-500 flex-shrink-0" />
+                  Custom depth per item
+                </li>
+                <li className="flex items-center gap-3 text-zinc-300">
+                  <Check className="w-5 h-5 text-orange-500 flex-shrink-0" />
+                  CNC precision cutting
+                </li>
+              </ul>
+            </div>
+            <div className="order-1 lg:order-2 relative">
+              <div className="rounded-lg overflow-hidden border border-zinc-700 shadow-2xl">
+                <Image
+                  src="/images/process/step-layout-2.png"
+                  alt="Preview step - See how your items will fit"
+                  width={1110}
+                  height={948}
+                  className="w-full h-auto"
+                />
+              </div>
+              <div className="absolute -bottom-4 -right-4 w-32 h-32 bg-orange-500/20 rounded-full blur-3xl -z-10" />
+            </div>
+          </div>
+
+          <div className="text-center mt-16">
             <Link href="/upload">
               <Button size="lg">
                 Try It Now - It&apos;s Free
@@ -999,9 +1101,11 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
             <div>
               <Link href="/" className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 bg-orange-500 rounded flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">C</span>
-                </div>
+                <img
+                  src="/images/logo.png"
+                  alt="CutMyCase"
+                  className="w-10 h-10 rounded"
+                />
                 <span className="font-bold text-xl">CUTMYCASE</span>
               </Link>
               <p className="text-zinc-500 text-sm">

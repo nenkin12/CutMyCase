@@ -14,6 +14,8 @@ export async function POST(request: NextRequest) {
 
     const calibration = await detectCalibrationReference(imageUrl);
 
+    console.log("Calibration result:", JSON.stringify(calibration, null, 2));
+
     return NextResponse.json({ calibration });
   } catch (error) {
     console.error("Calibration error:", error);

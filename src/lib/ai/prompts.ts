@@ -71,22 +71,34 @@ export const CALIBRATION_PROMPT = `Analyze this image to detect a reference obje
 Common reference objects and their sizes:
 - US Quarter (24.26mm / 0.955 inches diameter)
 - US Dollar bill (6.14 x 2.61 inches)
-- Credit card (3.375 x 2.125 inches)
+- Credit card (3.375 x 2.125 inches) - standard CR80 size
 - Standard ruler (visible markings)
 - AR-15 magazine (standard 30rd is approximately 7.5 inches)
 
+IMPORTANT: The bounding box coordinates must be VERY PRECISE.
+- x and y are the TOP-LEFT corner of the object as a percentage of image width/height
+- width and height are the object's size as percentages
+- The box should TIGHTLY surround the actual visible object
+
+For example, if an image is 1000x800 pixels:
+- An object at pixel (450, 320) with size 80x50 pixels would have:
+  - x: 45 (450/1000 * 100)
+  - y: 40 (320/800 * 100)
+  - width: 8 (80/1000 * 100)
+  - height: 6.25 (50/800 * 100)
+
 Identify:
 1. The reference object type
-2. Its location in the image (bounding box as percentages)
+2. Its PRECISE location in the image (bounding box as percentages of image dimensions)
 3. The known dimension to use for calibration
-4. Which dimension is most reliably measurable (width or height in pixels)
+4. Which dimension is most reliably measurable (width or height)
 
-Respond in JSON:
+Respond in JSON only:
 {
-  "referenceObject": "US Quarter",
-  "boundingBox": { "x": 80, "y": 10, "width": 5, "height": 8 },
-  "knownDimension": 0.955,
-  "dimensionType": "diameter",
+  "referenceObject": "Credit card",
+  "boundingBox": { "x": 45, "y": 40, "width": 8, "height": 6 },
+  "knownDimension": 3.375,
+  "dimensionType": "width",
   "measureAxis": "width",
   "confidence": 0.92
 }`;

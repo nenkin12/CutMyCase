@@ -3,21 +3,41 @@
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { StepUpload } from "./step-upload";
-import { StepClassify } from "./step-classify";
+import { StepSegment } from "./step-segment";
 import { StepCalibrate } from "./step-calibrate";
-import { StepProcess } from "./step-process";
-import { StepPreview } from "./step-preview";
-import { StepCaseSelect } from "./step-case-select";
+import { StepLayout } from "./step-layout";
+import { StepCheckout } from "./step-checkout";
 import { cn } from "@/lib/utils";
-import type { GearAnalysisResult, CalibrationResult, OutlineResult } from "@/lib/ai/process-image";
+import type { CalibrationResult } from "@/lib/ai/process-image";
 
 export type WizardStep =
   | "upload"
-  | "classify"
+  | "segment"
   | "calibrate"
-  | "process"
-  | "preview"
-  | "case-select";
+  | "layout"
+  | "checkout";
+
+interface SegmentedItem {
+  id: string;
+  name: string;
+  maskUrl: string;
+  points: number[][];
+  color: string;
+  depth?: number;
+}
+
+interface LayoutItem {
+  id: string;
+  name: string;
+  points: number[][];
+  color: string;
+  x: number;
+  y: number;
+  rotation: number;
+  width: number;
+  height: number;
+  depth: number;
+}
 
 interface WizardState {
   step: WizardStep;
@@ -25,12 +45,15 @@ interface WizardState {
   imageUrl: string | null;
   imageWidth: number | null;
   imageHeight: number | null;
-  gearAnalysis: GearAnalysisResult | null;
+  segmentedItems: SegmentedItem[];
   calibration: CalibrationResult | null;
   pixelsPerInch: number | null;
-  outlines: OutlineResult | null;
-  tolerance: number;
+  itemDepths: Record<string, number>;
+  layoutItems: LayoutItem[];
   selectedCaseId: string | null;
+  caseName: string | null;
+  caseWidth: number | null;
+  caseHeight: number | null;
 }
 
 const initialState: WizardState = {
@@ -39,21 +62,23 @@ const initialState: WizardState = {
   imageUrl: null,
   imageWidth: null,
   imageHeight: null,
-  gearAnalysis: null,
+  segmentedItems: [],
   calibration: null,
   pixelsPerInch: null,
-  outlines: null,
-  tolerance: 0.1,
+  itemDepths: {},
+  layoutItems: [],
   selectedCaseId: null,
+  caseName: null,
+  caseWidth: null,
+  caseHeight: null,
 };
 
 const steps: { id: WizardStep; label: string }[] = [
   { id: "upload", label: "Upload" },
-  { id: "classify", label: "Detect" },
+  { id: "segment", label: "Select" },
   { id: "calibrate", label: "Calibrate" },
-  { id: "process", label: "Process" },
-  { id: "preview", label: "Preview" },
-  { id: "case-select", label: "Case" },
+  { id: "layout", label: "Layout" },
+  { id: "checkout", label: "Checkout" },
 ];
 
 export function UploadWizard() {
@@ -70,7 +95,7 @@ export function UploadWizard() {
   const currentStepIndex = steps.findIndex((s) => s.id === state.step);
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-5xl mx-auto">
       {/* Progress Steps */}
       <div className="mb-8">
         <div className="flex items-center justify-between">
@@ -79,11 +104,11 @@ export function UploadWizard() {
               <div className="flex flex-col items-center">
                 <div
                   className={cn(
-                    "w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium transition-colors",
+                    "w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-xs sm:text-sm font-medium transition-colors",
                     index < currentStepIndex
                       ? "bg-accent text-white"
                       : index === currentStepIndex
-                      ? "bg-accent text-white ring-4 ring-accent/30"
+                      ? "bg-accent text-white ring-2 sm:ring-4 ring-accent/30"
                       : "bg-carbon text-text-muted border border-border"
                   )}
                 >
@@ -138,7 +163,7 @@ export function UploadWizard() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
             transition={{ duration: 0.2 }}
-            className="p-6 sm:p-8"
+            className="p-4 sm:p-6 lg:p-8"
           >
             {state.step === "upload" && (
               <StepUpload
@@ -148,18 +173,20 @@ export function UploadWizard() {
                     imageUrl: data.imageUrl,
                     imageWidth: data.width,
                     imageHeight: data.height,
-                    step: "classify",
+                    step: "segment",
                   });
                 }}
               />
             )}
 
-            {state.step === "classify" && state.imageUrl && (
-              <StepClassify
+            {state.step === "segment" && state.imageUrl && (
+              <StepSegment
                 imageUrl={state.imageUrl}
-                onComplete={(analysis) => {
+                imageWidth={state.imageWidth!}
+                imageHeight={state.imageHeight!}
+                onComplete={(items) => {
                   updateState({
-                    gearAnalysis: analysis,
+                    segmentedItems: items,
                     step: "calibrate",
                   });
                 }}
@@ -172,52 +199,58 @@ export function UploadWizard() {
                 imageUrl={state.imageUrl}
                 imageWidth={state.imageWidth!}
                 imageHeight={state.imageHeight!}
+                segmentedItems={state.segmentedItems}
                 onComplete={(data) => {
+                  // Merge depths into segmented items
+                  const itemsWithDepths = state.segmentedItems.map(item => ({
+                    ...item,
+                    depth: data.itemDepths[item.id] ?? 1.5
+                  }));
                   updateState({
                     calibration: data.calibration,
                     pixelsPerInch: data.pixelsPerInch,
-                    step: "process",
+                    itemDepths: data.itemDepths,
+                    segmentedItems: itemsWithDepths,
+                    step: "layout",
                   });
                 }}
-                onBack={() => goToStep("classify")}
+                onBack={() => goToStep("segment")}
               />
             )}
 
-            {state.step === "process" && state.uploadId && (
-              <StepProcess
-                uploadId={state.uploadId}
-                imageUrl={state.imageUrl!}
-                pixelsPerInch={state.pixelsPerInch!}
-                onComplete={(outlines) => {
+            {state.step === "layout" && state.pixelsPerInch && state.imageUrl && (
+              <StepLayout
+                segmentedItems={state.segmentedItems}
+                pixelsPerInch={state.pixelsPerInch}
+                imageWidth={state.imageWidth!}
+                imageHeight={state.imageHeight!}
+                imageUrl={state.imageUrl}
+                onComplete={(layoutItems, caseId, caseName, caseWidth, caseHeight) => {
                   updateState({
-                    outlines,
-                    step: "preview",
+                    layoutItems,
+                    selectedCaseId: caseId,
+                    caseName,
+                    caseWidth,
+                    caseHeight,
+                    step: "checkout",
                   });
                 }}
                 onBack={() => goToStep("calibrate")}
               />
             )}
 
-            {state.step === "preview" && state.outlines && (
-              <StepPreview
-                outlines={state.outlines}
-                tolerance={state.tolerance}
-                onToleranceChange={(tolerance) => updateState({ tolerance })}
-                onComplete={() => goToStep("case-select")}
-                onBack={() => goToStep("process")}
-              />
-            )}
-
-            {state.step === "case-select" && state.uploadId && (
-              <StepCaseSelect
-                uploadId={state.uploadId}
-                outlines={state.outlines!}
-                tolerance={state.tolerance}
-                onComplete={(caseId) => {
-                  updateState({ selectedCaseId: caseId });
-                  // Navigate to cart or checkout
+            {state.step === "checkout" && state.selectedCaseId && (
+              <StepCheckout
+                layoutItems={state.layoutItems}
+                selectedCaseId={state.selectedCaseId}
+                caseName={state.caseName || "Custom Case"}
+                caseWidth={state.caseWidth || 0}
+                caseHeight={state.caseHeight || 0}
+                onComplete={() => {
+                  // Reset wizard or redirect
+                  alert("Order submitted! We will contact you shortly.");
                 }}
-                onBack={() => goToStep("preview")}
+                onBack={() => goToStep("layout")}
               />
             )}
           </motion.div>
