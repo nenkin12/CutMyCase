@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ArrowLeft, Wand2, Trash2 } from "lucide-react";
+import { ArrowLeft, Wand2, Trash2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -53,6 +53,58 @@ export function StepSegment({
   const [scanProgress, setScanProgress] = useState(0);
   const [scanPhase, setScanPhase] = useState<string>("");
   const [minArea, setMinArea] = useState(2000);   // Minimum object area in pixels
+
+  // Template matching state
+  const [templateMatches, setTemplateMatches] = useState<Record<string, { name: string; category: string; confidence: number } | null>>({});
+
+  // Match detected items against training templates
+  const matchTemplates = useCallback(async (detectedItems: SegmentedItem[]) => {
+    if (detectedItems.length === 0) return;
+
+    try {
+      const response = await fetch("/api/templates/match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: detectedItems.map(item => ({
+            id: item.id,
+            points: item.points,
+          })),
+          incrementUsage: true,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const matches: Record<string, { name: string; category: string; confidence: number } | null> = {};
+
+        for (const result of data.results) {
+          if (result.bestMatch && result.bestMatch.confidence > 50) {
+            matches[result.itemId] = {
+              name: result.bestMatch.template.name,
+              category: result.bestMatch.template.category,
+              confidence: result.bestMatch.confidence,
+            };
+          } else {
+            matches[result.itemId] = null;
+          }
+        }
+
+        setTemplateMatches(matches);
+
+        // Auto-update item names for high-confidence matches
+        setItems(prev => prev.map(item => {
+          const match = matches[item.id];
+          if (match && match.confidence > 70) {
+            return { ...item, name: match.name };
+          }
+          return item;
+        }));
+      }
+    } catch (error) {
+      console.error("Template matching failed:", error);
+    }
+  }, []);
 
   // Load and draw the original image
   useEffect(() => {
@@ -454,6 +506,9 @@ export function StepSegment({
     });
 
     setItems(newItems);
+
+    // Match against training templates to auto-identify items
+    matchTemplates(newItems);
   };
 
   const handleAutoDetect = async () => {
@@ -836,38 +891,54 @@ export function StepSegment({
               </p>
             ) : (
               <div className="space-y-2 max-h-64 overflow-y-auto">
-                {items.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between p-3 bg-dark rounded-[4px]"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-4 h-4 rounded"
-                        style={{ backgroundColor: item.color }}
-                      />
-                      <input
-                        type="text"
-                        value={item.name}
-                        onChange={(e) => {
-                          setItems(items.map(i =>
-                            i.id === item.id ? { ...i, name: e.target.value } : i
-                          ));
-                        }}
-                        className="bg-transparent border-none text-sm focus:outline-none w-24"
-                      />
-                      <span className="text-xs text-text-muted">
-                        {item.points.length} pts
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => removeItem(item.id)}
-                      className="text-text-muted hover:text-error text-lg"
+                {items.map((item) => {
+                  const match = templateMatches[item.id];
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between p-3 bg-dark rounded-[4px]"
                     >
-                      ×
-                    </button>
-                  </div>
-                ))}
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div
+                          className="w-4 h-4 rounded flex-shrink-0"
+                          style={{ backgroundColor: item.color }}
+                        />
+                        <div className="flex flex-col min-w-0">
+                          <input
+                            type="text"
+                            value={item.name}
+                            onChange={(e) => {
+                              setItems(items.map(i =>
+                                i.id === item.id ? { ...i, name: e.target.value } : i
+                              ));
+                            }}
+                            className="bg-transparent border-none text-sm focus:outline-none w-full"
+                          />
+                          {match && (
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <Sparkles className="w-3 h-3 text-accent" />
+                              <span className="text-xs text-accent">
+                                {match.confidence}% match
+                              </span>
+                              <span className="text-xs text-text-muted">
+                                ({match.category})
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <span className="text-xs text-text-muted flex-shrink-0">
+                          {item.points.length} pts
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => removeItem(item.id)}
+                        className="text-text-muted hover:text-error text-lg ml-2"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
