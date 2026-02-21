@@ -366,7 +366,11 @@ export function StepLayout({
 
     // Get container dimensions (max available space)
     const containerWidth = container.clientWidth || 800;
-    const maxHeight = 550; // Max height we want the canvas to be
+    // Use viewport height for mobile responsiveness
+    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
+    const isMobile = viewportHeight < 800;
+    // On mobile, limit canvas to ~45% of viewport; on desktop, allow more
+    const maxHeight = isMobile ? Math.min(viewportHeight * 0.45, 400) : 550;
 
     // Calculate the canvas size at zoom=1
     const canvasWidthAtZoom1 = (currentCase.innerWidth + 2) * DISPLAY_SCALE;
@@ -379,7 +383,7 @@ export function StepLayout({
     // Use the smaller zoom to ensure it fits both dimensions
     const autoZoom = Math.min(zoomToFitWidth, zoomToFitHeight, 1); // Cap at 1 (don't zoom in)
 
-    setZoom(Math.max(0.25, autoZoom)); // Minimum zoom of 0.25
+    setZoom(Math.max(0.2, autoZoom)); // Lower minimum zoom on mobile (0.2 instead of 0.25)
   }, [currentCase, selectedCase, customWidth, customHeight]);
 
   // Process points with smoothing and finger pulls
@@ -870,7 +874,7 @@ export function StepLayout({
         <div className="lg:col-span-3 order-1">
           <div
             ref={containerRef}
-            className="bg-carbon rounded-[4px] overflow-auto max-h-[600px]"
+            className="bg-carbon rounded-[4px] overflow-auto max-h-[50vh] sm:max-h-[60vh] lg:max-h-[600px]"
           >
             <canvas
               ref={canvasRef}
@@ -989,35 +993,38 @@ export function StepLayout({
         </div>
 
         {/* Controls */}
-        <div className="space-y-4 order-2 lg:max-h-[600px] lg:overflow-y-auto">
-          {/* Fit Indicator */}
+        <div className="space-y-3 sm:space-y-4 order-2 max-h-[40vh] sm:max-h-[50vh] lg:max-h-[600px] overflow-y-auto">
+          {/* Fit Indicator - Compact on mobile */}
           <div className={cn(
-            "rounded-[4px] p-4 text-center",
+            "rounded-[4px] p-2 sm:p-4 text-center",
             fitPercentage === 100 ? "bg-success/20" : fitPercentage > 0 ? "bg-warning/20" : "bg-error/20"
           )}>
-            <div className={cn(
-              "text-4xl font-heading",
-              fitPercentage === 100 ? "text-success" : fitPercentage > 0 ? "text-warning" : "text-error"
-            )}>
-              {fitPercentage}%
+            <div className="flex sm:flex-col items-center justify-center gap-2 sm:gap-0">
+              <div className={cn(
+                "text-2xl sm:text-4xl font-heading",
+                fitPercentage === 100 ? "text-success" : fitPercentage > 0 ? "text-warning" : "text-error"
+              )}>
+                {fitPercentage}%
+              </div>
+              <div className="text-xs sm:text-sm text-text-muted">
+                {fitPercentage === 100 ? "All items fit!" :
+                 fitPercentage > 0 ? "Items too close to edge" : "No items placed"}
+                <span className="sm:hidden"> (1" border)</span>
+              </div>
             </div>
-            <div className="text-sm text-text-muted">
-              {fitPercentage === 100 ? "All items in safe zone!" :
-               fitPercentage > 0 ? "Items too close to edge" : "No items placed"}
-            </div>
-            <div className="text-xs text-text-muted mt-1">
+            <div className="hidden sm:block text-xs text-text-muted mt-1">
               1" border required
             </div>
           </div>
 
           {/* Processing Settings */}
-          <div className="bg-carbon rounded-[4px] p-4">
+          <div className="bg-carbon rounded-[4px] p-3 sm:p-4">
             <button
               onClick={() => setShowProcessingPanel(!showProcessingPanel)}
               className="w-full flex items-center justify-between text-left"
             >
-              <h3 className="font-heading text-sm flex items-center gap-2">
-                <Settings2 className="w-4 h-4" />
+              <h3 className="font-heading text-xs sm:text-sm flex items-center gap-2">
+                <Settings2 className="w-3 h-3 sm:w-4 sm:h-4" />
                 Shape Processing
               </h3>
               <span className="text-xs text-text-muted">
@@ -1104,22 +1111,22 @@ export function StepLayout({
           </div>
 
           {/* Case Selection */}
-          <div className="bg-carbon rounded-[4px] p-4">
-            <h3 className="font-heading text-sm mb-3">Select Case</h3>
-            <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto">
+          <div className="bg-carbon rounded-[4px] p-3 sm:p-4">
+            <h3 className="font-heading text-xs sm:text-sm mb-2 sm:mb-3">Select Case</h3>
+            <div className="grid grid-cols-2 gap-1.5 sm:gap-2 max-h-48 sm:max-h-72 overflow-y-auto">
               {CASE_SIZES.map(caseSize => (
                 <button
                   key={caseSize.id}
                   onClick={() => setSelectedCase(caseSize.id)}
                   className={cn(
-                    "flex flex-col items-center p-2 rounded-[4px] text-center transition-all",
+                    "flex flex-col items-center p-1.5 sm:p-2 rounded-[4px] text-center transition-all",
                     selectedCase === caseSize.id
                       ? "bg-accent/20 border-2 border-accent ring-2 ring-accent/30"
                       : "hover:bg-dark border-2 border-transparent hover:border-accent/30"
                   )}
                 >
                   {/* Case Image */}
-                  <div className="w-full aspect-[4/3] bg-dark rounded-[4px] overflow-hidden mb-2 flex items-center justify-center">
+                  <div className="w-full aspect-[5/3] sm:aspect-[4/3] bg-dark rounded-[4px] overflow-hidden mb-1 sm:mb-2 flex items-center justify-center">
                     <img
                       src={caseSize.image}
                       alt={`${caseSize.brand} ${caseSize.name}`}
@@ -1202,11 +1209,11 @@ export function StepLayout({
           </div>
 
           {/* Items List */}
-          <div className="bg-carbon rounded-[4px] p-4">
-            <h3 className="font-heading text-sm mb-3">
+          <div className="bg-carbon rounded-[4px] p-3 sm:p-4">
+            <h3 className="font-heading text-xs sm:text-sm mb-2 sm:mb-3">
               Items ({layoutItems.length})
             </h3>
-            <div className="space-y-2 max-h-48 overflow-y-auto">
+            <div className="space-y-1.5 sm:space-y-2 max-h-32 sm:max-h-48 overflow-y-auto">
               {layoutItems.map(item => (
                 <div
                   key={item.id}
