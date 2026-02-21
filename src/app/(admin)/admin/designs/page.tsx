@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
-import { RefreshCw, Eye, Package, Scan, Layout, ShoppingCart, CheckCircle, Save, Brain, Sparkles } from "lucide-react";
+import { RefreshCw, Eye, Package, Scan, Layout, ShoppingCart, CheckCircle, Save, Brain, Sparkles, Database, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -417,6 +417,10 @@ export default function DesignsPage() {
   const [refinedPoints, setRefinedPoints] = useState<number[][] | null>(null);
   const [refining, setRefining] = useState(false);
 
+  // Template states
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [templateSaved, setTemplateSaved] = useState(false);
+
   const fetchDesigns = async () => {
     setLoading(true);
     try {
@@ -454,7 +458,40 @@ export default function DesignsPage() {
   useEffect(() => {
     setRefinedPoints(null);
     setRefinementType("category");
+    setTemplateSaved(false);
   }, [selectedItemId]);
+
+  // Save item as a template for future training
+  const saveAsTemplate = async () => {
+    if (!selectedDesign || !selectedItem) return;
+
+    setSavingTemplate(true);
+    try {
+      const pointsToSave = refinedPoints || selectedItem.points;
+
+      const res = await fetch("/api/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editName || selectedItem.name,
+          category: editCategory || "other",
+          points: pointsToSave,
+          trainingNotes: editPrompt,
+          sourceDesignId: selectedDesign.id,
+        }),
+      });
+
+      if (res.ok) {
+        setTemplateSaved(true);
+        // Also save the feedback to the design
+        await saveItemFeedback();
+      }
+    } catch (error) {
+      console.error("Failed to save template:", error);
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
 
   // Refine shape using API
   const refineShape = async () => {
@@ -919,14 +956,46 @@ export default function DesignsPage() {
                         </div>
                       </div>
 
-                      {/* Save Button */}
+                      {/* Save as Template Button */}
+                      <div className="border-t border-border pt-4">
+                        <h4 className="text-xs font-medium text-success mb-2 flex items-center gap-2">
+                          <Database className="w-3 h-3" />
+                          Save to Training Database
+                        </h4>
+                        <p className="text-xs text-text-muted mb-3">
+                          Save this shape as a template. Future scans will use it to better identify similar items.
+                        </p>
+                        {templateSaved ? (
+                          <div className="flex items-center gap-2 text-success text-sm py-2">
+                            <Check className="w-4 h-4" />
+                            Template saved to database!
+                          </div>
+                        ) : (
+                          <Button
+                            onClick={saveAsTemplate}
+                            disabled={savingTemplate || !editCategory}
+                            className="w-full bg-success hover:bg-success/90"
+                          >
+                            <Database className="w-4 h-4 mr-2" />
+                            {savingTemplate ? "Saving Template..." : "Save as Training Template"}
+                          </Button>
+                        )}
+                        {!editCategory && (
+                          <p className="text-xs text-warning mt-2">
+                            Select a category above to save as template
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Save Feedback Only Button */}
                       <Button
+                        variant="secondary"
                         onClick={saveItemFeedback}
                         disabled={saving}
                         className="w-full"
                       >
                         <Save className="w-4 h-4 mr-2" />
-                        {saving ? "Saving..." : "Save AI Feedback (without shape change)"}
+                        {saving ? "Saving..." : "Save Feedback Only"}
                       </Button>
                     </CardContent>
                   </Card>
