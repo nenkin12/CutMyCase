@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
     switch (action) {
       case "stepEnter":
         // Add step entry if not already there
-        const existingStep = session.steps.find((s: { step: string }) => s.step === step && !s.completedAt);
+        const existingStep = session.steps.find((s: { step: string; completedAt?: number }) => s.step === step && !s.completedAt);
         if (!existingStep) {
           session.steps.push({
             step,
@@ -177,13 +177,26 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest) {
+interface SessionData {
+  id: string;
+  userId?: string;
+  userEmail?: string;
+  startedAt: number;
+  lastStep: string;
+  lastUpdated: number;
+  completed: boolean;
+  steps: Array<{ step: string; enteredAt: number; completedAt?: number }>;
+  imageUrl?: string;
+  itemCount?: number;
+}
+
+export async function GET() {
   try {
     // Get all sessions for admin dashboard
-    const allSessions = await getAllSessions();
+    const allSessions = await getAllSessions() as SessionData[];
 
     // Sort by lastUpdated descending
-    const sorted = (allSessions as Array<{ lastUpdated: number }>).sort((a, b) => b.lastUpdated - a.lastUpdated);
+    const sorted = allSessions.sort((a, b) => b.lastUpdated - a.lastUpdated);
 
     // Calculate funnel stats
     const stats = {
@@ -206,7 +219,7 @@ export async function GET(request: NextRequest) {
       },
     };
 
-    for (const session of sorted as Array<{ lastStep: string; completed: boolean }>) {
+    for (const session of sorted) {
       const step = session.lastStep as keyof typeof stats.byStep;
       if (stats.byStep[step] !== undefined) {
         stats.byStep[step]++;
