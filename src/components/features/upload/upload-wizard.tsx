@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useSession } from "next-auth/react";
+import { useAuth } from "@/components/providers/auth-provider";
 import { StepUpload } from "./step-upload";
 import { StepSegment } from "./step-segment";
 import { StepCalibrate } from "./step-calibrate";
@@ -85,7 +85,7 @@ const steps: { id: WizardStep; label: string }[] = [
 
 export function UploadWizard() {
   const [state, setState] = useState<WizardState>(initialState);
-  const { data: session } = useSession();
+  const { user } = useAuth();
 
   const updateState = useCallback((updates: Partial<WizardState>) => {
     setState((prev) => ({ ...prev, ...updates }));
@@ -107,10 +107,10 @@ export function UploadWizard() {
 
   // Link session to user when they sign in
   useEffect(() => {
-    if (session?.user?.id && session?.user?.email) {
-      linkSessionToUser(session.user.id, session.user.email);
+    if (user?.uid && user?.email) {
+      linkSessionToUser(user.uid, user.email);
     }
-  }, [session]);
+  }, [user]);
 
   return (
     <div className="max-w-5xl mx-auto">

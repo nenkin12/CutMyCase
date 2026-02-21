@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Bebas_Neue, Barlow } from "next/font/google";
-import { SessionProvider } from "@/components/providers/session-provider";
+import { AuthProvider } from "@/components/providers/auth-provider";
 import "./globals.css";
 
 const bebasNeue = Bebas_Neue({
@@ -63,7 +63,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${bebasNeue.variable} ${barlow.variable} antialiased`}>
-        <SessionProvider>{children}</SessionProvider>
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

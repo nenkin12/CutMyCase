@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
-import { redirect } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { useAuth, ADMIN_EMAIL } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { RefreshCw, Users, TrendingUp, AlertTriangle, CheckCircle } from "lucide-react";
@@ -44,8 +44,6 @@ interface Stats {
   };
 }
 
-const ADMIN_EMAIL = "nukicben@gmail.com";
-
 const STEP_LABELS: Record<string, string> = {
   upload: "Upload",
   segment: "Select Items",
@@ -54,11 +52,6 @@ const STEP_LABELS: Record<string, string> = {
   checkout: "Checkout",
   completed: "Completed",
 };
-
-function formatTime(timestamp: number): string {
-  const date = new Date(timestamp);
-  return date.toLocaleString();
-}
 
 function formatTimeAgo(timestamp: number): string {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
@@ -70,19 +63,20 @@ function formatTimeAgo(timestamp: number): string {
 }
 
 export default function AdminPage() {
-  const { data: session, status } = useSession();
+  const router = useRouter();
+  const { user, loading: authLoading, isAdmin } = useAuth();
   const [analytics, setAnalytics] = useState<{ sessions: Session[]; stats: Stats } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Check if user is admin
   useEffect(() => {
-    if (status === "loading") return;
+    if (authLoading) return;
 
-    if (!session || session.user?.email !== ADMIN_EMAIL) {
-      redirect("/auth/signin");
+    if (!user || !isAdmin) {
+      router.push("/auth/signin");
     }
-  }, [session, status]);
+  }, [user, authLoading, isAdmin, router]);
 
   // Fetch analytics data
   const fetchAnalytics = async () => {
@@ -104,12 +98,12 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
-    if (session?.user?.email === ADMIN_EMAIL) {
+    if (user && isAdmin) {
       fetchAnalytics();
     }
-  }, [session]);
+  }, [user, isAdmin]);
 
-  if (status === "loading" || (session?.user?.email !== ADMIN_EMAIL && status !== "unauthenticated")) {
+  if (authLoading || (!isAdmin && !authLoading)) {
     return (
       <div className="min-h-screen bg-dark flex items-center justify-center">
         <div className="text-text-muted">Loading...</div>
@@ -130,7 +124,7 @@ export default function AdminPage() {
             <span className="text-white font-medium">Admin Panel</span>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-text-muted">{session?.user?.email}</span>
+            <span className="text-sm text-text-muted">{user?.email}</span>
             <Button variant="secondary" size="sm" onClick={fetchAnalytics} disabled={loading}>
               <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
               Refresh
@@ -196,7 +190,7 @@ export default function AdminPage() {
             <div className="bg-card border border-border rounded-[4px] p-6 mb-8">
               <h2 className="text-xl font-heading mb-4">Conversion Funnel</h2>
               <div className="space-y-3">
-                {(["upload", "segment", "calibrate", "layout", "checkout", "completed"] as const).map((step, index) => {
+                {(["upload", "segment", "calibrate", "layout", "checkout", "completed"] as const).map((step) => {
                   const count = analytics.stats.byStep[step];
                   const total = analytics.stats.total || 1;
                   const percentage = Math.round((count / total) * 100);

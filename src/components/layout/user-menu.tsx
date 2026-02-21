@@ -1,14 +1,14 @@
 "use client";
 
-import { useSession, signIn, signOut } from "next-auth/react";
 import { useState, useRef, useEffect } from "react";
+import { signInWithPopup, signOut } from "firebase/auth";
+import { auth, googleProvider } from "@/lib/firebase";
+import { useAuth, ADMIN_EMAIL } from "@/components/providers/auth-provider";
 import { User, LogOut, Settings, ChevronDown } from "lucide-react";
 import Link from "next/link";
 
-const ADMIN_EMAIL = "nukicben@gmail.com";
-
 export function UserMenu() {
-  const { data: session, status } = useSession();
+  const { user, loading, isAdmin } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -24,16 +24,33 @@ export function UserMenu() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  if (status === "loading") {
+  const handleSignIn = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error("Sign in error:", error);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+      setIsOpen(false);
+    } catch (error) {
+      console.error("Sign out error:", error);
+    }
+  };
+
+  if (loading) {
     return (
       <div className="w-8 h-8 rounded-full bg-carbon animate-pulse" />
     );
   }
 
-  if (!session) {
+  if (!user) {
     return (
       <button
-        onClick={() => signIn("google")}
+        onClick={handleSignIn}
         className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-accent hover:bg-accent/90 rounded-[4px] transition-colors"
       >
         <User className="w-4 h-4" />
@@ -42,18 +59,16 @@ export function UserMenu() {
     );
   }
 
-  const isAdmin = session.user?.email === ADMIN_EMAIL;
-
   return (
     <div className="relative" ref={menuRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-3 py-2 rounded-[4px] hover:bg-carbon transition-colors"
       >
-        {session.user?.image ? (
+        {user.photoURL ? (
           <img
-            src={session.user.image}
-            alt={session.user.name || "User"}
+            src={user.photoURL}
+            alt={user.displayName || "User"}
             className="w-8 h-8 rounded-full"
           />
         ) : (
@@ -67,8 +82,8 @@ export function UserMenu() {
       {isOpen && (
         <div className="absolute right-0 mt-2 w-56 bg-card border border-border rounded-[4px] shadow-lg overflow-hidden z-50">
           <div className="px-4 py-3 border-b border-border">
-            <p className="text-sm font-medium">{session.user?.name}</p>
-            <p className="text-xs text-text-muted">{session.user?.email}</p>
+            <p className="text-sm font-medium">{user.displayName}</p>
+            <p className="text-xs text-text-muted">{user.email}</p>
           </div>
 
           <div className="py-1">
@@ -84,10 +99,7 @@ export function UserMenu() {
             )}
 
             <button
-              onClick={() => {
-                setIsOpen(false);
-                signOut();
-              }}
+              onClick={handleSignOut}
               className="flex items-center gap-3 w-full px-4 py-2 text-sm hover:bg-dark transition-colors text-left"
             >
               <LogOut className="w-4 h-4 text-text-muted" />

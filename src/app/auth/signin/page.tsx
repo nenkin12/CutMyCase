@@ -1,10 +1,78 @@
 "use client";
 
-import { signIn } from "next-auth/react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword
+} from "firebase/auth";
+import { auth, googleProvider } from "@/lib/firebase";
+import { useAuth } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 
 export default function SignInPage() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Redirect if already signed in
+  if (user) {
+    router.push("/");
+    return null;
+  }
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await signInWithPopup(auth, googleProvider);
+      router.push("/");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to sign in with Google");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      if (isSignUp) {
+        await createUserWithEmailAndPassword(auth, email, password);
+      } else {
+        await signInWithEmailAndPassword(auth, email, password);
+      }
+      router.push("/");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Authentication failed";
+      // Make error messages more user-friendly
+      if (message.includes("auth/invalid-email")) {
+        setError("Invalid email address");
+      } else if (message.includes("auth/wrong-password")) {
+        setError("Incorrect password");
+      } else if (message.includes("auth/user-not-found")) {
+        setError("No account found with this email");
+      } else if (message.includes("auth/email-already-in-use")) {
+        setError("An account already exists with this email");
+      } else if (message.includes("auth/weak-password")) {
+        setError("Password should be at least 6 characters");
+      } else {
+        setError(message);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-dark flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -13,12 +81,22 @@ export default function SignInPage() {
             <Link href="/" className="inline-block">
               <h1 className="text-3xl font-heading text-accent">CUTMYCASE</h1>
             </Link>
-            <p className="text-text-secondary mt-2">Sign in to your account</p>
+            <p className="text-text-secondary mt-2">
+              {isSignUp ? "Create your account" : "Sign in to your account"}
+            </p>
           </div>
 
+          {error && (
+            <div className="mb-4 p-3 bg-error/10 border border-error/30 rounded-[4px] text-error text-sm">
+              {error}
+            </div>
+          )}
+
+          {/* Google Sign In */}
           <Button
-            onClick={() => signIn("google", { callbackUrl: "/" })}
-            className="w-full flex items-center justify-center gap-3"
+            onClick={handleGoogleSignIn}
+            disabled={loading}
+            className="w-full flex items-center justify-center gap-3 mb-6"
             size="lg"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -42,7 +120,55 @@ export default function SignInPage() {
             Continue with Google
           </Button>
 
+          <div className="relative mb-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-border"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-4 bg-card text-text-muted">or</span>
+            </div>
+          </div>
+
+          {/* Email/Password Form */}
+          <form onSubmit={handleEmailAuth} className="space-y-4">
+            <div>
+              <label className="block text-sm text-text-muted mb-1">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-2 bg-dark border border-border rounded-[4px] focus:outline-none focus:border-accent"
+                placeholder="you@example.com"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-text-muted mb-1">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-4 py-2 bg-dark border border-border rounded-[4px] focus:outline-none focus:border-accent"
+                placeholder="••••••••"
+                required
+                minLength={6}
+              />
+            </div>
+            <Button type="submit" disabled={loading} className="w-full" variant="secondary">
+              {loading ? "Loading..." : isSignUp ? "Create Account" : "Sign In"}
+            </Button>
+          </form>
+
           <div className="mt-6 text-center">
+            <button
+              onClick={() => setIsSignUp(!isSignUp)}
+              className="text-sm text-text-muted hover:text-accent"
+            >
+              {isSignUp ? "Already have an account? Sign in" : "Don't have an account? Sign up"}
+            </button>
+          </div>
+
+          <div className="mt-4 text-center">
             <Link href="/" className="text-sm text-text-muted hover:text-accent">
               Back to home
             </Link>
