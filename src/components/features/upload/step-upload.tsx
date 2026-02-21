@@ -229,8 +229,8 @@ export function StepUpload({ onComplete }: StepUploadProps) {
     <div className="space-y-6">
       {/* Rules Modal */}
       {showRulesModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-          <div className="bg-surface border border-border rounded-lg p-6 max-w-md mx-4 shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+          <div className="bg-[#1a1a1a] border border-border rounded-lg p-6 max-w-md mx-4 shadow-xl">
             <div className="flex items-center gap-3 mb-4">
               <AlertCircle className="w-6 h-6 text-accent" />
               <h3 className="text-xl font-heading">Important: Upload Rules</h3>
