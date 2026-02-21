@@ -728,14 +728,32 @@ export function StepLayout({
 
     setLayoutItems(prev => prev.map(item => {
       if (item.id === selectedItemId) {
-        // Rotate 90 degrees and swap dimensions
+        const oldWidth = item.width;
+        const oldHeight = item.height;
+
+        // Rotate points 90 degrees clockwise around center
+        // For a 90° clockwise rotation: new_x = y, new_y = oldWidth - x
+        const rotatedPoints = item.points.map(p => [
+          p[1],                    // new x = old y
+          oldWidth - p[0]          // new y = oldWidth - old x
+        ]);
+
+        const rotatedRawPoints = item.rawPoints.map(p => [
+          p[1],
+          oldWidth - p[0]
+        ]);
+
+        // After rotation, dimensions swap
         return {
           ...item,
-          rotation: (item.rotation + 90) % 360,
-          width: item.height,
-          height: item.width,
-          points: item.points.map(p => [item.height - p[1], p[0]]),
-          rawPoints: item.rawPoints.map(p => [item.height - p[1], p[0]]),
+          rotation: 0, // Keep rotation at 0, we're transforming the actual points
+          width: oldHeight,
+          height: oldWidth,
+          points: rotatedPoints,
+          rawPoints: rotatedRawPoints,
+          // Also swap source dimensions for image preview
+          sourceWidth: item.sourceHeight,
+          sourceHeight: item.sourceWidth,
         };
       }
       return item;
