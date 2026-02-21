@@ -34,7 +34,24 @@ export default function SignInPage() {
       await signInWithPopup(auth, googleProvider);
       router.push("/");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to sign in with Google");
+      console.error("Google sign-in error:", err);
+      const errorMessage = err instanceof Error ? err.message : "Failed to sign in with Google";
+      const errorCode = (err as { code?: string })?.code || "";
+
+      // Handle specific Firebase auth errors
+      if (errorCode === "auth/popup-closed-by-user") {
+        setError("Sign-in popup was closed. Please try again.");
+      } else if (errorCode === "auth/popup-blocked") {
+        setError("Popup was blocked by your browser. Please allow popups for this site.");
+      } else if (errorCode === "auth/cancelled-popup-request") {
+        setError("Sign-in was cancelled. Please try again.");
+      } else if (errorCode === "auth/unauthorized-domain") {
+        setError("This domain is not authorized for sign-in. Please contact support.");
+      } else if (errorMessage.includes("unauthorized-domain")) {
+        setError("This domain is not authorized for sign-in. Please contact support.");
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setLoading(false);
     }
