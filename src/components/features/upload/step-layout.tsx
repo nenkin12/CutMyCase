@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ArrowLeft, RotateCw, Trash2, ZoomIn, ZoomOut, Copy, Plus, Minus, Settings2, Image as ImageIcon, ImageOff } from "lucide-react";
+import { ArrowLeft, RotateCw, Trash2, ZoomIn, ZoomOut, Copy, Plus, Minus, Settings2, Image as ImageIcon, ImageOff, Package, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -251,6 +251,207 @@ interface CaseSize {
   productUrl: string;
 }
 
+// Preset item from the catalog
+interface PresetItem {
+  id: string;
+  name: string;
+  brand: string;
+  category: string;
+  points: number[][];
+  widthInches: number;
+  heightInches: number;
+  depthInches: number;
+  tags: string[];
+}
+
+// PresetShapeCanvas for displaying preset shapes
+function PresetShapeCanvas({ points, width = 60, height = 60 }: { points: number[][]; width?: number; height?: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !points || points.length < 3) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, width, height);
+
+    const xs = points.map((p) => p[0]);
+    const ys = points.map((p) => p[1]);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const shapeWidth = maxX - minX;
+    const shapeHeight = maxY - minY;
+
+    const padding = 5;
+    const scaleX = (width - padding * 2) / shapeWidth;
+    const scaleY = (height - padding * 2) / shapeHeight;
+    const scale = Math.min(scaleX, scaleY);
+
+    const offsetX = (width - shapeWidth * scale) / 2 - minX * scale;
+    const offsetY = (height - shapeHeight * scale) / 2 - minY * scale;
+
+    ctx.fillStyle = "rgba(255, 126, 0, 0.2)";
+    ctx.strokeStyle = "#ff7e00";
+    ctx.lineWidth = 1.5;
+
+    ctx.beginPath();
+    points.forEach((point, i) => {
+      const x = point[0] * scale + offsetX;
+      const y = point[1] * scale + offsetY;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }, [points, width, height]);
+
+  return <canvas ref={canvasRef} width={width} height={height} className="bg-carbon rounded" />;
+}
+
+// Preset picker modal
+function PresetPickerModal({
+  onSelect,
+  onClose,
+}: {
+  onSelect: (preset: PresetItem) => void;
+  onClose: () => void;
+}) {
+  const [presets, setPresets] = useState<PresetItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+
+  const CATEGORIES = [
+    { value: "", label: "All" },
+    { value: "drone", label: "Drones" },
+    { value: "battery", label: "Batteries" },
+    { value: "camera", label: "Cameras" },
+    { value: "lens", label: "Lenses" },
+    { value: "controller", label: "Controllers" },
+    { value: "accessory", label: "Accessories" },
+  ];
+
+  useEffect(() => {
+    fetchPresets();
+  }, [categoryFilter, searchQuery]);
+
+  const fetchPresets = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (categoryFilter) params.set("category", categoryFilter);
+      if (searchQuery) params.set("search", searchQuery);
+      params.set("active", "true");
+
+      const response = await fetch(`/api/presets?${params}`);
+      if (response.ok) {
+        const data = await response.json();
+        setPresets(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch presets:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSelect = async (preset: PresetItem) => {
+    // Track usage
+    try {
+      await fetch("/api/presets/use", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ presetId: preset.id }),
+      });
+    } catch (err) {
+      console.error("Failed to track preset usage:", err);
+    }
+
+    onSelect(preset);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+      <div className="bg-card border border-border rounded-lg max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <h2 className="text-xl font-heading flex items-center gap-2">
+            <Package className="w-5 h-5 text-accent" />
+            Add Preset Item
+          </h2>
+          <button onClick={onClose} className="text-text-muted hover:text-white">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-4 border-b border-border">
+          <div className="flex gap-3">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search presets..."
+                className="w-full bg-carbon border border-border rounded pl-10 pr-4 py-2 text-white text-sm"
+              />
+            </div>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="bg-carbon border border-border rounded px-3 py-2 text-white text-sm"
+            >
+              {CATEGORIES.map((cat) => (
+                <option key={cat.value} value={cat.value}>
+                  {cat.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          {loading ? (
+            <div className="text-center py-8 text-text-muted">Loading presets...</div>
+          ) : presets.length === 0 ? (
+            <div className="text-center py-8">
+              <Package className="w-12 h-12 mx-auto text-text-muted mb-3" />
+              <p className="text-text-muted">No presets found</p>
+              <p className="text-sm text-text-muted mt-1">
+                Try adjusting your search or check back later
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {presets.map((preset) => (
+                <button
+                  key={preset.id}
+                  onClick={() => handleSelect(preset)}
+                  className="bg-carbon border border-border rounded-lg p-3 hover:border-accent transition-colors text-left"
+                >
+                  <div className="flex justify-center mb-2">
+                    <PresetShapeCanvas points={preset.points} width={80} height={60} />
+                  </div>
+                  <h4 className="font-medium text-sm truncate">{preset.name}</h4>
+                  <p className="text-xs text-text-muted">{preset.brand}</p>
+                  <p className="text-xs text-text-muted mt-1">
+                    {preset.widthInches.toFixed(1)}" x {preset.heightInches.toFixed(1)}"
+                  </p>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const CASE_SIZES: CaseSize[] = [
   {
     id: "pelican-1535",
@@ -332,6 +533,7 @@ export function StepLayout({
   const [showProcessingPanel, setShowProcessingPanel] = useState(false);
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [sourceImage, setSourceImage] = useState<HTMLImageElement | null>(null);
+  const [showPresetPicker, setShowPresetPicker] = useState(false);
 
   // Load source image for preview
   useEffect(() => {
@@ -825,6 +1027,51 @@ export function StepLayout({
     setLayoutItems(prev => [...prev, ...newItems]);
   };
 
+  // Add a preset item to the layout
+  const addPresetToLayout = useCallback((preset: PresetItem) => {
+    // Normalize preset points to be relative to origin (0,0)
+    const xs = preset.points.map(p => p[0]);
+    const ys = preset.points.map(p => p[1]);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+
+    const normalizedPoints = preset.points.map(p => [
+      p[0] - minX,
+      p[1] - minY
+    ]);
+
+    // Apply smoothing
+    const { points: processedPoints, fingerPullIndex } = processPoints(
+      normalizedPoints,
+      preset.widthInches,
+      preset.heightInches
+    );
+
+    // Create a new layout item
+    const newId = `preset_${preset.id}_${Date.now()}`;
+    const newItem: LayoutItem = {
+      id: newId,
+      name: preset.name,
+      points: processedPoints,
+      rawPoints: normalizedPoints,
+      color: "#ff7e00", // Accent color for presets
+      x: BORDER_MARGIN + 0.5, // Start in safe zone
+      y: BORDER_MARGIN + 0.5,
+      rotation: 0,
+      width: preset.widthInches,
+      height: preset.heightInches,
+      depth: preset.depthInches,
+      fingerPullIndex,
+      sourceX: 0,
+      sourceY: 0,
+      sourceWidth: 0,
+      sourceHeight: 0,
+    };
+
+    setLayoutItems(prev => [...prev, newItem]);
+    setSelectedItemId(newId);
+  }, [processPoints]);
+
   const autoArrange = () => {
     // Smart auto-arrange: group similar items together for an organized, aesthetic layout
     const padding = 0.3; // inches between items
@@ -1309,9 +1556,18 @@ export function StepLayout({
 
           {/* Items List */}
           <div className="bg-carbon rounded-[4px] p-3 sm:p-4">
-            <h3 className="font-heading text-xs sm:text-sm mb-2 sm:mb-3">
-              Items ({layoutItems.length})
-            </h3>
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <h3 className="font-heading text-xs sm:text-sm">
+                Items ({layoutItems.length})
+              </h3>
+              <button
+                onClick={() => setShowPresetPicker(true)}
+                className="flex items-center gap-1 text-xs text-accent hover:text-accent/80 transition-colors"
+              >
+                <Package className="w-3 h-3" />
+                Add Preset
+              </button>
+            </div>
             <div className="space-y-1.5 sm:space-y-2 max-h-32 sm:max-h-48 overflow-y-auto">
               {layoutItems.map(item => (
                 <div
@@ -1388,6 +1644,14 @@ export function StepLayout({
           Continue to Checkout
         </Button>
       </div>
+
+      {/* Preset Picker Modal */}
+      {showPresetPicker && (
+        <PresetPickerModal
+          onSelect={addPresetToLayout}
+          onClose={() => setShowPresetPicker(false)}
+        />
+      )}
     </div>
   );
 }

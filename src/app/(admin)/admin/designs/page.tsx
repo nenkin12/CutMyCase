@@ -639,6 +639,9 @@ export default function DesignsPage() {
               <Link href="/admin/designs" className="text-accent">
                 Designs
               </Link>
+              <Link href="/admin/presets" className="text-text-secondary hover:text-white">
+                Presets
+              </Link>
               <Link href="/" className="text-text-secondary hover:text-white">
                 View Site
               </Link>
