@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Menu, X, ShoppingCart, User } from "lucide-react";
+import { Menu, X, ShoppingCart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useCartStore } from "@/stores/cart-store";
+import { UserMenu } from "./user-menu";
 
 const navLinks = [
   { href: "/", label: "Home" },
@@ -62,11 +63,9 @@ export function Header() {
               )}
             </Link>
 
-            <Link href="/account" className="hidden sm:block">
-              <Button variant="ghost" size="icon">
-                <User className="h-5 w-5" />
-              </Button>
-            </Link>
+            <div className="hidden sm:block">
+              <UserMenu />
+            </div>
 
             <Link href="/upload" className="hidden sm:block">
               <Button size="sm">Get Started</Button>

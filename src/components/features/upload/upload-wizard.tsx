@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useSession } from "next-auth/react";
 import { StepUpload } from "./step-upload";
 import { StepSegment } from "./step-segment";
 import { StepCalibrate } from "./step-calibrate";
@@ -9,6 +10,7 @@ import { StepLayout } from "./step-layout";
 import { StepCheckout } from "./step-checkout";
 import { cn } from "@/lib/utils";
 import type { CalibrationResult } from "@/lib/ai/process-image";
+import { trackStepEnter, trackStepComplete, linkSessionToUser, type DesignStep } from "@/lib/analytics";
 
 export type WizardStep =
   | "upload"
@@ -83,6 +85,7 @@ const steps: { id: WizardStep; label: string }[] = [
 
 export function UploadWizard() {
   const [state, setState] = useState<WizardState>(initialState);
+  const { data: session } = useSession();
 
   const updateState = useCallback((updates: Partial<WizardState>) => {
     setState((prev) => ({ ...prev, ...updates }));
@@ -93,6 +96,21 @@ export function UploadWizard() {
   }, [updateState]);
 
   const currentStepIndex = steps.findIndex((s) => s.id === state.step);
+
+  // Track step changes for analytics
+  useEffect(() => {
+    trackStepEnter(state.step as DesignStep, {
+      imageUrl: state.imageUrl,
+      itemCount: state.segmentedItems.length,
+    });
+  }, [state.step]);
+
+  // Link session to user when they sign in
+  useEffect(() => {
+    if (session?.user?.id && session?.user?.email) {
+      linkSessionToUser(session.user.id, session.user.email);
+    }
+  }, [session]);
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -168,6 +186,7 @@ export function UploadWizard() {
             {state.step === "upload" && (
               <StepUpload
                 onComplete={(data) => {
+                  trackStepComplete("upload", { imageUrl: data.imageUrl });
                   updateState({
                     uploadId: data.uploadId,
                     imageUrl: data.imageUrl,
@@ -185,6 +204,7 @@ export function UploadWizard() {
                 imageWidth={state.imageWidth!}
                 imageHeight={state.imageHeight!}
                 onComplete={(items) => {
+                  trackStepComplete("segment", { itemCount: items.length });
                   updateState({
                     segmentedItems: items,
                     step: "calibrate",
@@ -201,6 +221,7 @@ export function UploadWizard() {
                 imageHeight={state.imageHeight!}
                 segmentedItems={state.segmentedItems}
                 onComplete={(data) => {
+                  trackStepComplete("calibrate", { pixelsPerInch: data.pixelsPerInch });
                   // Merge depths into segmented items
                   const itemsWithDepths = state.segmentedItems.map(item => ({
                     ...item,
@@ -226,6 +247,7 @@ export function UploadWizard() {
                 imageHeight={state.imageHeight!}
                 imageUrl={state.imageUrl}
                 onComplete={(layoutItems, caseId, caseName, caseWidth, caseHeight) => {
+                  trackStepComplete("layout", { caseId, caseName });
                   updateState({
                     layoutItems,
                     selectedCaseId: caseId,
@@ -247,6 +269,8 @@ export function UploadWizard() {
                 caseWidth={state.caseWidth || 0}
                 caseHeight={state.caseHeight || 0}
                 onComplete={() => {
+                  trackStepComplete("checkout");
+                  trackStepComplete("completed");
                   // Reset wizard or redirect
                   alert("Order submitted! We will contact you shortly.");
                 }}
