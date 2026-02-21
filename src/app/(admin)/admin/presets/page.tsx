@@ -136,6 +136,221 @@ function PresetShapeCanvas({ points, width = 120, height = 80 }: { points: numbe
   );
 }
 
+// Parse SVG path data to extract points
+function parseSvgPath(pathData: string): number[][] {
+  const points: number[][] = [];
+  // Remove newlines and extra spaces
+  const normalized = pathData.replace(/[\n\r]/g, ' ').replace(/\s+/g, ' ').trim();
+
+  // Split into commands
+  const commands = normalized.match(/[MmLlHhVvCcSsQqTtAaZz][^MmLlHhVvCcSsQqTtAaZz]*/g) || [];
+
+  let currentX = 0;
+  let currentY = 0;
+  let startX = 0;
+  let startY = 0;
+
+  for (const cmd of commands) {
+    const type = cmd[0];
+    const args = cmd.slice(1).trim().split(/[\s,]+/).map(parseFloat).filter(n => !isNaN(n));
+
+    switch (type) {
+      case 'M': // Move to absolute
+        currentX = args[0];
+        currentY = args[1];
+        startX = currentX;
+        startY = currentY;
+        points.push([currentX, currentY]);
+        // Additional pairs are implicit lineto
+        for (let i = 2; i < args.length; i += 2) {
+          currentX = args[i];
+          currentY = args[i + 1];
+          points.push([currentX, currentY]);
+        }
+        break;
+      case 'm': // Move to relative
+        currentX += args[0];
+        currentY += args[1];
+        startX = currentX;
+        startY = currentY;
+        points.push([currentX, currentY]);
+        for (let i = 2; i < args.length; i += 2) {
+          currentX += args[i];
+          currentY += args[i + 1];
+          points.push([currentX, currentY]);
+        }
+        break;
+      case 'L': // Line to absolute
+        for (let i = 0; i < args.length; i += 2) {
+          currentX = args[i];
+          currentY = args[i + 1];
+          points.push([currentX, currentY]);
+        }
+        break;
+      case 'l': // Line to relative
+        for (let i = 0; i < args.length; i += 2) {
+          currentX += args[i];
+          currentY += args[i + 1];
+          points.push([currentX, currentY]);
+        }
+        break;
+      case 'H': // Horizontal line absolute
+        for (const x of args) {
+          currentX = x;
+          points.push([currentX, currentY]);
+        }
+        break;
+      case 'h': // Horizontal line relative
+        for (const dx of args) {
+          currentX += dx;
+          points.push([currentX, currentY]);
+        }
+        break;
+      case 'V': // Vertical line absolute
+        for (const y of args) {
+          currentY = y;
+          points.push([currentX, currentY]);
+        }
+        break;
+      case 'v': // Vertical line relative
+        for (const dy of args) {
+          currentY += dy;
+          points.push([currentX, currentY]);
+        }
+        break;
+      case 'C': // Cubic bezier absolute - sample points along curve
+        for (let i = 0; i < args.length; i += 6) {
+          const x1 = args[i], y1 = args[i+1];
+          const x2 = args[i+2], y2 = args[i+3];
+          const x3 = args[i+4], y3 = args[i+5];
+          // Sample the bezier curve
+          for (let t = 0.25; t <= 1; t += 0.25) {
+            const mt = 1 - t;
+            const x = mt*mt*mt*currentX + 3*mt*mt*t*x1 + 3*mt*t*t*x2 + t*t*t*x3;
+            const y = mt*mt*mt*currentY + 3*mt*mt*t*y1 + 3*mt*t*t*y2 + t*t*t*y3;
+            points.push([x, y]);
+          }
+          currentX = x3;
+          currentY = y3;
+        }
+        break;
+      case 'c': // Cubic bezier relative
+        for (let i = 0; i < args.length; i += 6) {
+          const x1 = currentX + args[i], y1 = currentY + args[i+1];
+          const x2 = currentX + args[i+2], y2 = currentY + args[i+3];
+          const x3 = currentX + args[i+4], y3 = currentY + args[i+5];
+          for (let t = 0.25; t <= 1; t += 0.25) {
+            const mt = 1 - t;
+            const x = mt*mt*mt*currentX + 3*mt*mt*t*x1 + 3*mt*t*t*x2 + t*t*t*x3;
+            const y = mt*mt*mt*currentY + 3*mt*mt*t*y1 + 3*mt*t*t*y2 + t*t*t*y3;
+            points.push([x, y]);
+          }
+          currentX = x3;
+          currentY = y3;
+        }
+        break;
+      case 'Z':
+      case 'z': // Close path
+        if (points.length > 0 && (currentX !== startX || currentY !== startY)) {
+          points.push([startX, startY]);
+        }
+        currentX = startX;
+        currentY = startY;
+        break;
+      // Add more commands as needed (Q, S, T, A)
+    }
+  }
+
+  return points;
+}
+
+// Parse SVG file and extract all paths
+function parseSvgFile(svgContent: string): { points: number[][], width: number, height: number } {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgContent, "image/svg+xml");
+  const svg = doc.querySelector("svg");
+
+  if (!svg) {
+    throw new Error("Invalid SVG file");
+  }
+
+  // Get viewBox or width/height for dimensions
+  let width = 100, height = 100;
+  const viewBox = svg.getAttribute("viewBox");
+  if (viewBox) {
+    const parts = viewBox.split(/[\s,]+/).map(parseFloat);
+    if (parts.length >= 4) {
+      width = parts[2];
+      height = parts[3];
+    }
+  } else {
+    const w = svg.getAttribute("width");
+    const h = svg.getAttribute("height");
+    if (w) width = parseFloat(w) || 100;
+    if (h) height = parseFloat(h) || 100;
+  }
+
+  // Find all path elements
+  const paths = doc.querySelectorAll("path");
+  let allPoints: number[][] = [];
+
+  paths.forEach(path => {
+    const d = path.getAttribute("d");
+    if (d) {
+      const pathPoints = parseSvgPath(d);
+      allPoints = allPoints.concat(pathPoints);
+    }
+  });
+
+  // Also check for polygon/polyline elements
+  const polygons = doc.querySelectorAll("polygon, polyline");
+  polygons.forEach(poly => {
+    const pointsAttr = poly.getAttribute("points");
+    if (pointsAttr) {
+      const coords = pointsAttr.trim().split(/[\s,]+/).map(parseFloat);
+      for (let i = 0; i < coords.length; i += 2) {
+        if (!isNaN(coords[i]) && !isNaN(coords[i+1])) {
+          allPoints.push([coords[i], coords[i+1]]);
+        }
+      }
+    }
+  });
+
+  // Check for rect elements
+  const rects = doc.querySelectorAll("rect");
+  rects.forEach(rect => {
+    const x = parseFloat(rect.getAttribute("x") || "0");
+    const y = parseFloat(rect.getAttribute("y") || "0");
+    const w = parseFloat(rect.getAttribute("width") || "0");
+    const h = parseFloat(rect.getAttribute("height") || "0");
+    if (w > 0 && h > 0) {
+      allPoints.push([x, y], [x + w, y], [x + w, y + h], [x, y + h]);
+    }
+  });
+
+  if (allPoints.length < 3) {
+    throw new Error("No valid paths found in SVG");
+  }
+
+  // Normalize points to start at 0,0
+  const xs = allPoints.map(p => p[0]);
+  const ys = allPoints.map(p => p[1]);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  const maxX = Math.max(...xs);
+  const maxY = Math.max(...ys);
+
+  const normalizedPoints = allPoints.map(p => [p[0] - minX, p[1] - minY]);
+  const actualWidth = maxX - minX;
+  const actualHeight = maxY - minY;
+
+  return {
+    points: normalizedPoints,
+    width: actualWidth,
+    height: actualHeight,
+  };
+}
+
 // Modal for creating/editing presets
 function PresetModal({
   preset,
@@ -158,16 +373,73 @@ function PresetModal({
     tags: preset?.tags?.join(", ") || "",
     isActive: preset?.isActive ?? true,
   });
+  const [points, setPoints] = useState<number[][]>(preset?.points || []);
   const [saving, setSaving] = useState(false);
+  const [svgError, setSvgError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleSvgUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setSvgError(null);
+
+    try {
+      const content = await file.text();
+      const { points: svgPoints, width, height } = parseSvgFile(content);
+
+      // Scale points to inches (assume SVG is in mm or pixels, ask user for real width)
+      // For now, store raw points and let user specify actual dimensions
+      setPoints(svgPoints);
+
+      // Calculate aspect ratio to suggest dimensions
+      const aspectRatio = width / height;
+      if (formData.widthInches === 0 && formData.heightInches === 0) {
+        // Default to reasonable size, user can adjust
+        const defaultWidth = 5;
+        setFormData(prev => ({
+          ...prev,
+          widthInches: defaultWidth,
+          heightInches: defaultWidth / aspectRatio,
+        }));
+      }
+
+    } catch (err) {
+      setSvgError(err instanceof Error ? err.message : "Failed to parse SVG");
+    }
+
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  // Scale points to match specified dimensions
+  const getScaledPoints = useCallback(() => {
+    if (points.length === 0) return [];
+
+    const xs = points.map(p => p[0]);
+    const ys = points.map(p => p[1]);
+    const currentWidth = Math.max(...xs) - Math.min(...xs);
+    const currentHeight = Math.max(...ys) - Math.min(...ys);
+
+    if (currentWidth === 0 || currentHeight === 0) return points;
+
+    const scaleX = formData.widthInches / currentWidth;
+    const scaleY = formData.heightInches / currentHeight;
+
+    return points.map(p => [p[0] * scaleX, p[1] * scaleY]);
+  }, [points, formData.widthInches, formData.heightInches]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
+      const scaledPoints = getScaledPoints();
       await onSave({
         ...formData,
         tags: formData.tags.split(",").map((t) => t.trim()).filter(Boolean),
-        points: preset?.points || [],
+        points: scaledPoints.length > 0 ? scaledPoints : preset?.points || [],
       });
       onClose();
     } catch (err) {
@@ -176,6 +448,8 @@ function PresetModal({
       setSaving(false);
     }
   };
+
+  const displayPoints = points.length > 0 ? getScaledPoints() : preset?.points || [];
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
@@ -190,12 +464,49 @@ function PresetModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          {/* Shape preview */}
-          {preset?.points && preset.points.length > 0 && (
-            <div className="flex justify-center mb-4">
-              <PresetShapeCanvas points={preset.points} width={200} height={120} />
+          {/* SVG Upload */}
+          <div className="bg-carbon rounded-lg p-4">
+            <label className="block text-sm text-text-muted mb-2">Shape (SVG Upload)</label>
+            <div className="flex items-center gap-4">
+              <div className="flex-shrink-0">
+                {displayPoints.length > 0 ? (
+                  <PresetShapeCanvas points={displayPoints} width={120} height={80} />
+                ) : (
+                  <div className="w-[120px] h-[80px] bg-dark rounded flex items-center justify-center text-text-muted text-xs">
+                    No shape
+                  </div>
+                )}
+              </div>
+              <div className="flex-1">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".svg"
+                  onChange={handleSvgUpload}
+                  className="hidden"
+                  id="svg-upload"
+                />
+                <label
+                  htmlFor="svg-upload"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-dark border border-border rounded cursor-pointer hover:border-accent transition-colors"
+                >
+                  <Upload className="w-4 h-4" />
+                  Upload SVG
+                </label>
+                <p className="text-xs text-text-muted mt-2">
+                  Upload an SVG file with the exact item outline
+                </p>
+                {svgError && (
+                  <p className="text-xs text-error mt-1">{svgError}</p>
+                )}
+                {points.length > 0 && (
+                  <p className="text-xs text-success mt-1">
+                    {points.length} points extracted from SVG
+                  </p>
+                )}
+              </div>
             </div>
-          )}
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
