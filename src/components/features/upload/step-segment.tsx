@@ -457,40 +457,65 @@ export function StepSegment({
     setScanProgress(0);
     setScanPhase("Initializing AI scanner...");
 
-    // Animated progress simulation
-    const progressInterval = setInterval(() => {
-      setScanProgress(prev => {
-        if (prev < 90) return prev + Math.random() * 8;
-        return prev;
-      });
-    }, 200);
-
     const phases = [
-      { delay: 300, text: "Analyzing image composition..." },
-      { delay: 800, text: "Detecting object boundaries..." },
-      { delay: 1200, text: "Removing background..." },
-      { delay: 1800, text: "Extracting object silhouettes..." },
-      { delay: 2200, text: "Refining contours..." },
+      "Analyzing image composition...",
+      "Detecting object boundaries...",
+      "Removing background...",
+      "Extracting object silhouettes...",
+      "Refining contours...",
     ];
-
-    phases.forEach(({ delay, text }) => {
-      setTimeout(() => setScanPhase(text), delay);
-    });
+    let phaseIndex = 0;
 
     try {
-      const response = await fetch("/api/segment", {
+      // Step 1: Create prediction
+      console.log("Creating prediction for imageUrl:", imageUrl.substring(0, 50) + "...");
+
+      const createResponse = await fetch("/api/segment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imageUrl }),
       });
 
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.details || "Auto-detection failed");
+      if (!createResponse.ok) {
+        const errData = await createResponse.json();
+        throw new Error(errData.error || errData.details || "Failed to start detection");
       }
 
-      const data = await response.json();
-      console.log("Background removal result:", data);
+      let data = await createResponse.json();
+      console.log("Initial response:", data);
+
+      // Step 2: Poll for completion (client-side to avoid serverless timeout)
+      while (data.status === "processing" && data.predictionId) {
+        setScanPhase(phases[phaseIndex % phases.length]);
+        setScanProgress(Math.min(85, 20 + phaseIndex * 15));
+        phaseIndex++;
+
+        // Wait 2 seconds before polling
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        const pollResponse = await fetch("/api/segment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageUrl, predictionId: data.predictionId }),
+        });
+
+        if (!pollResponse.ok) {
+          const errData = await pollResponse.json();
+          throw new Error(errData.error || "Failed to check status");
+        }
+
+        data = await pollResponse.json();
+        console.log("Poll response:", data.status);
+
+        // Safety check to prevent infinite loop
+        if (phaseIndex > 30) {
+          throw new Error("Processing timed out. Please try again.");
+        }
+      }
+
+      if (data.status !== "completed") {
+        throw new Error(data.error || "Processing failed");
+      }
 
       setScanPhase("Processing results...");
       setScanProgress(95);
@@ -499,41 +524,44 @@ export function StepSegment({
         // Load the cleaned image and extract image data
         const img = new Image();
         img.crossOrigin = "anonymous";
-        img.onload = () => {
-          const canvas = document.createElement("canvas");
-          const overlay = overlayCanvasRef.current;
-          if (!overlay) return;
 
-          canvas.width = overlay.width;
-          canvas.height = overlay.height;
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            const overlay = overlayCanvasRef.current;
+            if (!overlay) {
+              reject(new Error("Canvas not available"));
+              return;
+            }
 
-          const ctx = canvas.getContext("2d");
-          if (!ctx) return;
+            canvas.width = overlay.width;
+            canvas.height = overlay.height;
 
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const ctx = canvas.getContext("2d");
+            if (!ctx) {
+              reject(new Error("Could not get canvas context"));
+              return;
+            }
 
-          setScanPhase("Finalizing detection...");
-          setScanProgress(100);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-          setCleanedImageData(imageData);
-          processCleanedImage(imageData);
+            setScanPhase("Finalizing detection...");
+            setScanProgress(100);
 
-          clearInterval(progressInterval);
-        };
-        img.onerror = () => {
-          setError("Failed to load cleaned image");
-          clearInterval(progressInterval);
-        };
-        img.src = data.cleanedImageUrl;
+            setCleanedImageData(imageData);
+            processCleanedImage(imageData);
+            resolve();
+          };
+          img.onerror = () => reject(new Error("Failed to load cleaned image"));
+          img.src = data.cleanedImageUrl;
+        });
       } else {
-        setError("No cleaned image returned");
-        clearInterval(progressInterval);
+        throw new Error("No cleaned image returned");
       }
     } catch (err) {
       console.error("Auto-detect error:", err);
       setError(`Auto-detection failed: ${err instanceof Error ? err.message : "Unknown error"}`);
-      clearInterval(progressInterval);
     } finally {
       setIsLoading(false);
       setScanPhase("");

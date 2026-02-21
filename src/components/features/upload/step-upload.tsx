@@ -147,34 +147,25 @@ export function StepUpload({ onComplete }: StepUploadProps) {
       const { blob, width, height } = await resizeImage(file);
       console.log(`Resized to ${width}x${height}, size: ${(blob.size / 1024).toFixed(0)}KB`);
 
-      // Create resized preview
-      const resizedPreview = URL.createObjectURL(blob);
+      // Upload resized image via server to Firebase
+      const formData = new FormData();
+      formData.append("file", blob, file.name);
 
-      let imageUrl = resizedPreview;
-      let uploadId = `local_${Date.now()}`;
+      const response = await fetch("/api/upload/firebase", {
+        method: "POST",
+        body: formData,
+      });
 
-      try {
-        // Upload resized image via server
-        const formData = new FormData();
-        formData.append("file", blob, file.name);
-
-        const response = await fetch("/api/upload/firebase", {
-          method: "POST",
-          body: formData,
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          imageUrl = data.imageUrl;
-          uploadId = data.uploadId;
-          console.log("Uploaded to Firebase:", imageUrl);
-        } else {
-          const errText = await response.text();
-          console.log("Server upload failed:", errText);
-        }
-      } catch (uploadError) {
-        console.log("Upload failed, using local preview:", uploadError);
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error("Server upload failed:", errText);
+        throw new Error("Failed to upload image to server. Please try again.");
       }
+
+      const data = await response.json();
+      const imageUrl = data.imageUrl;
+      const uploadId = data.uploadId;
+      console.log("Uploaded to Firebase:", imageUrl);
 
       setUploadProgress(100);
       await new Promise(resolve => setTimeout(resolve, 300));

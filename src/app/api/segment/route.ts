@@ -1,67 +1,73 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Increase timeout for this route
-export const maxDuration = 25;
-
 const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
-
-async function runPrediction(version: string, input: Record<string, unknown>): Promise<string> {
-  // Create prediction
-  const createResponse = await fetch("https://api.replicate.com/v1/predictions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${REPLICATE_API_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ version, input }),
-  });
-
-  if (!createResponse.ok) {
-    const error = await createResponse.json();
-    console.error("Replicate create error:", error);
-    throw new Error(`Replicate API error: ${JSON.stringify(error)}`);
-  }
-
-  const prediction = await createResponse.json();
-  console.log("Created prediction:", prediction.id);
-
-  // Poll for result (max 60 attempts = ~60 seconds)
-  let result = prediction;
-  let attempts = 0;
-  while (result.status !== "succeeded" && result.status !== "failed" && attempts < 60) {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    attempts++;
-
-    const pollResponse = await fetch(result.urls.get, {
-      headers: { "Authorization": `Bearer ${REPLICATE_API_TOKEN}` },
-    });
-    result = await pollResponse.json();
-    console.log("Prediction status:", result.status, "attempt:", attempts);
-  }
-
-  if (result.status === "failed") {
-    throw new Error(`Prediction failed: ${result.error}`);
-  }
-
-  if (result.status !== "succeeded") {
-    throw new Error("Prediction timed out");
-  }
-
-  return result.output;
-}
 
 export async function POST(request: NextRequest) {
   console.log("Segment API called");
 
   try {
     const body = await request.json();
-    const { imageUrl } = body;
+    const { imageUrl, predictionId } = body;
 
-    console.log("Image URL type:", imageUrl?.startsWith("data:") ? "base64" : "url");
+    // If predictionId provided, check status (polling mode)
+    if (predictionId) {
+      console.log("Polling prediction:", predictionId);
+
+      const pollResponse = await fetch(
+        `https://api.replicate.com/v1/predictions/${predictionId}`,
+        {
+          headers: { "Authorization": `Bearer ${REPLICATE_API_TOKEN}` },
+        }
+      );
+
+      if (!pollResponse.ok) {
+        const error = await pollResponse.json();
+        console.error("Poll error:", error);
+        return NextResponse.json(
+          { error: "Failed to check prediction status" },
+          { status: 500 }
+        );
+      }
+
+      const result = await pollResponse.json();
+      console.log("Prediction status:", result.status);
+
+      if (result.status === "succeeded") {
+        return NextResponse.json({
+          success: true,
+          status: "completed",
+          cleanedImageUrl: result.output,
+          originalImageUrl: imageUrl,
+        });
+      } else if (result.status === "failed") {
+        return NextResponse.json(
+          { error: `Prediction failed: ${result.error}` },
+          { status: 500 }
+        );
+      } else {
+        // Still processing
+        return NextResponse.json({
+          success: true,
+          status: "processing",
+          predictionId: result.id,
+        });
+      }
+    }
+
+    // New prediction request
+    console.log("Image URL type:", imageUrl?.startsWith("data:") ? "base64" : imageUrl?.startsWith("blob:") ? "blob" : "url");
 
     if (!imageUrl) {
       return NextResponse.json(
         { error: "Missing imageUrl" },
+        { status: 400 }
+      );
+    }
+
+    // Check if it's a blob URL (which won't work)
+    if (imageUrl.startsWith("blob:")) {
+      return NextResponse.json(
+        { error: "Blob URLs are not supported. Image must be uploaded to Firebase first." },
         { status: 400 }
       );
     }
@@ -71,6 +77,7 @@ export async function POST(request: NextRequest) {
       console.log("REPLICATE_API_TOKEN not configured");
       return NextResponse.json({
         success: true,
+        status: "completed",
         mode: "passthrough",
         cleanedImageUrl: imageUrl,
         originalImageUrl: imageUrl,
@@ -78,22 +85,50 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    console.log("Calling Replicate for background removal...");
+    console.log("Creating Replicate prediction for background removal...");
 
-    // Remove background using Replicate
-    const bgRemovedUrl = await runPrediction(
-      "95fcc2a26d3899cd6c2691c900465aaeff466285a65c14638cc5f36f34befaf1", // lucataco/remove-bg
-      { image: imageUrl }
-    );
+    // Create prediction (don't wait for it to complete)
+    const createResponse = await fetch("https://api.replicate.com/v1/predictions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${REPLICATE_API_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        version: "95fcc2a26d3899cd6c2691c900465aaeff466285a65c14638cc5f36f34befaf1", // lucataco/remove-bg
+        input: { image: imageUrl },
+      }),
+    });
 
-    console.log("Background removed successfully");
+    if (!createResponse.ok) {
+      const error = await createResponse.json();
+      console.error("Replicate create error:", error);
+      return NextResponse.json(
+        { error: `Replicate API error: ${JSON.stringify(error)}` },
+        { status: 500 }
+      );
+    }
 
+    const prediction = await createResponse.json();
+    console.log("Created prediction:", prediction.id, "status:", prediction.status);
+
+    // If already completed (unlikely but possible for cached results)
+    if (prediction.status === "succeeded") {
+      return NextResponse.json({
+        success: true,
+        status: "completed",
+        cleanedImageUrl: prediction.output,
+        originalImageUrl: imageUrl,
+      });
+    }
+
+    // Return prediction ID for client to poll
     return NextResponse.json({
       success: true,
-      mode: "hybrid",
-      cleanedImageUrl: bgRemovedUrl,
-      originalImageUrl: imageUrl,
+      status: "processing",
+      predictionId: prediction.id,
     });
+
   } catch (error) {
     console.error("Segment API error:", error);
     return NextResponse.json(
