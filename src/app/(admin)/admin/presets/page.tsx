@@ -1008,6 +1008,9 @@ export default function AdminPresetsPage() {
               <Link href="/admin/presets" className="text-accent">
                 Presets
               </Link>
+              <Link href="/admin/cases" className="text-text-secondary hover:text-white">
+                Cases
+              </Link>
               <Link href="/" className="text-text-secondary hover:text-white">
                 View Site
               </Link>
