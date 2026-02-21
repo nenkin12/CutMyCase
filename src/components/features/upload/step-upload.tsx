@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
-import { Upload, Image as ImageIcon, X, Cpu, Sparkles } from "lucide-react";
+import { Upload, Image as ImageIcon, X, Cpu, Sparkles, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -24,27 +24,32 @@ const UPLOAD_PHASES = [
 
 const MAX_IMAGE_SIZE = 2500; // Max dimension in pixels - maintains accuracy for detection
 
-// Resize image on client to reduce upload size
-async function resizeImage(file: File): Promise<{ blob: Blob; width: number; height: number }> {
+// Resize and optionally rotate image on client
+async function resizeImage(file: File, rotation: number = 0): Promise<{ blob: Blob; width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
       let { width, height } = img;
 
+      // Swap dimensions if rotating 90 or 270 degrees
+      const isRotated90or270 = rotation === 90 || rotation === 270;
+      let finalWidth = isRotated90or270 ? height : width;
+      let finalHeight = isRotated90or270 ? width : height;
+
       // Only resize if larger than max
-      if (width > MAX_IMAGE_SIZE || height > MAX_IMAGE_SIZE) {
-        if (width > height) {
-          height = Math.round((height * MAX_IMAGE_SIZE) / width);
-          width = MAX_IMAGE_SIZE;
+      if (finalWidth > MAX_IMAGE_SIZE || finalHeight > MAX_IMAGE_SIZE) {
+        if (finalWidth > finalHeight) {
+          finalHeight = Math.round((finalHeight * MAX_IMAGE_SIZE) / finalWidth);
+          finalWidth = MAX_IMAGE_SIZE;
         } else {
-          width = Math.round((width * MAX_IMAGE_SIZE) / height);
-          height = MAX_IMAGE_SIZE;
+          finalWidth = Math.round((finalWidth * MAX_IMAGE_SIZE) / finalHeight);
+          finalHeight = MAX_IMAGE_SIZE;
         }
       }
 
       const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
+      canvas.width = finalWidth;
+      canvas.height = finalHeight;
 
       const ctx = canvas.getContext("2d");
       if (!ctx) {
@@ -52,12 +57,22 @@ async function resizeImage(file: File): Promise<{ blob: Blob; width: number; hei
         return;
       }
 
-      ctx.drawImage(img, 0, 0, width, height);
+      // Apply rotation
+      ctx.save();
+      ctx.translate(finalWidth / 2, finalHeight / 2);
+      ctx.rotate((rotation * Math.PI) / 180);
+
+      // Calculate scaled dimensions for drawing
+      let drawWidth = isRotated90or270 ? finalHeight : finalWidth;
+      let drawHeight = isRotated90or270 ? finalWidth : finalHeight;
+
+      ctx.drawImage(img, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+      ctx.restore();
 
       canvas.toBlob(
         (blob) => {
           if (blob) {
-            resolve({ blob, width, height });
+            resolve({ blob, width: finalWidth, height: finalHeight });
           } else {
             reject(new Error("Could not create blob"));
           }
@@ -78,6 +93,11 @@ export function StepUpload({ onComplete }: StepUploadProps) {
   const [error, setError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadPhase, setUploadPhase] = useState(0);
+  const [rotation, setRotation] = useState(0);
+
+  const rotateImage = () => {
+    setRotation((prev) => (prev + 90) % 360);
+  };
 
   useEffect(() => {
     if (!isUploading) {
@@ -142,9 +162,9 @@ export function StepUpload({ onComplete }: StepUploadProps) {
     setError(null);
 
     try {
-      // Resize image first
-      console.log("Resizing image...");
-      const { blob, width, height } = await resizeImage(file);
+      // Resize and rotate image
+      console.log("Processing image with rotation:", rotation);
+      const { blob, width, height } = await resizeImage(file, rotation);
       console.log(`Resized to ${width}x${height}, size: ${(blob.size / 1024).toFixed(0)}KB`);
 
       // Upload resized image via server to Firebase
@@ -188,6 +208,7 @@ export function StepUpload({ onComplete }: StepUploadProps) {
     setFile(null);
     setPreview(null);
     setError(null);
+    setRotation(0);
   };
 
   const CurrentPhaseIcon = UPLOAD_PHASES[uploadPhase].icon;
@@ -230,6 +251,7 @@ export function StepUpload({ onComplete }: StepUploadProps) {
                 "w-full max-h-[400px] object-contain transition-all duration-300",
                 isUploading && "brightness-50"
               )}
+              style={{ transform: `rotate(${rotation}deg)` }}
             />
 
             {isUploading && (
@@ -287,12 +309,22 @@ export function StepUpload({ onComplete }: StepUploadProps) {
             )}
 
             {!isUploading && (
-              <button
-                onClick={clearFile}
-                className="absolute top-4 right-4 p-2 bg-black/50 rounded-full hover:bg-black/70 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="absolute top-4 right-4 flex gap-2">
+                <button
+                  onClick={rotateImage}
+                  className="p-2 bg-black/50 rounded-full hover:bg-black/70 transition-colors"
+                  title="Rotate 90°"
+                >
+                  <RotateCw className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={clearFile}
+                  className="p-2 bg-black/50 rounded-full hover:bg-black/70 transition-colors"
+                  title="Remove image"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             )}
           </div>
 
