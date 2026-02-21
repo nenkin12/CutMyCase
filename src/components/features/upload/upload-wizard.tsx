@@ -97,12 +97,14 @@ export function UploadWizard() {
 
   const currentStepIndex = steps.findIndex((s) => s.id === state.step);
 
-  // Track step changes for analytics
+  // Track step changes for analytics and scroll to top
   useEffect(() => {
     trackStepEnter(state.step as DesignStep, {
       imageUrl: state.imageUrl,
       itemCount: state.segmentedItems.length,
     });
+    // Scroll to top when step changes
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }, [state.step]);
 
   // Link session to user when they sign in
