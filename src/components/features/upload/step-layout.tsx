@@ -1073,9 +1073,8 @@ export function StepLayout({
   }, [processPoints]);
 
   const autoArrange = () => {
-    // Smart auto-arrange: large items first, then stack similar items in columns
-    // ALL items must stay within the case boundaries with 0.5" spacing
-    const padding = 0.5; // inches between items (minimum spacing)
+    // Smart auto-arrange with guaranteed no overlapping
+    const spacing = 0.5; // 0.5" minimum spacing between items
     const safeAreaX = BORDER_MARGIN;
     const safeAreaY = BORDER_MARGIN;
     const safeAreaWidth = currentCase.innerWidth - 2 * BORDER_MARGIN;
@@ -1083,51 +1082,44 @@ export function StepLayout({
     const maxX = safeAreaX + safeAreaWidth;
     const maxY = safeAreaY + safeAreaHeight;
 
-    // Track placed items to avoid overlaps
-    const placedItems: { x: number; y: number; width: number; height: number }[] = [];
+    // Track placed item bounding boxes
+    const placed: { x: number; y: number; w: number; h: number }[] = [];
 
-    // Check if a rectangle overlaps with any placed items
-    const checkOverlap = (x: number, y: number, width: number, height: number): boolean => {
-      for (const placed of placedItems) {
-        // Check if rectangles overlap (with padding)
-        const noOverlap =
-          x + width + padding <= placed.x ||
-          placed.x + placed.width + padding <= x ||
-          y + height + padding <= placed.y ||
-          placed.y + placed.height + padding <= y;
-        if (!noOverlap) return true;
+    // Check if a rectangle overlaps with any placed item (including spacing)
+    const overlaps = (x: number, y: number, w: number, h: number): boolean => {
+      for (const p of placed) {
+        // Two rectangles overlap if they are NOT separated
+        // They are separated if one is completely to the left, right, above, or below the other
+        const separated =
+          x >= p.x + p.w + spacing ||  // new item is to the right
+          x + w + spacing <= p.x ||     // new item is to the left
+          y >= p.y + p.h + spacing ||  // new item is below
+          y + h + spacing <= p.y;       // new item is above
+
+        if (!separated) return true; // overlapping
       }
       return false;
     };
 
-    // Find a valid position for an item using simple row-based placement
-    const findPosition = (width: number, height: number, preferX?: number, preferY?: number): { x: number; y: number } | null => {
-      const stepSize = 0.5; // Search in 0.5" increments
+    // Find first non-overlapping position by scanning left-to-right, top-to-bottom
+    const findPosition = (w: number, h: number): { x: number; y: number } => {
+      const step = 0.25; // Fine-grained search
 
-      // If preferred position is given and valid, use it
-      if (preferX !== undefined && preferY !== undefined) {
-        if (preferX + width <= maxX && preferY + height <= maxY && !checkOverlap(preferX, preferY, width, height)) {
-          return { x: preferX, y: preferY };
-        }
-      }
-
-      // Scan for valid position row by row
-      for (let y = safeAreaY; y + height <= maxY; y += stepSize) {
-        for (let x = safeAreaX; x + width <= maxX; x += stepSize) {
-          if (!checkOverlap(x, y, width, height)) {
+      for (let y = safeAreaY; y + h <= maxY; y += step) {
+        for (let x = safeAreaX; x + w <= maxX; x += step) {
+          if (!overlaps(x, y, w, h)) {
             return { x, y };
           }
         }
       }
 
-      // Fallback: place at origin (will overlap but at least visible)
+      // No space found - place at origin as fallback
       return { x: safeAreaX, y: safeAreaY };
     };
 
-    // Extract the base name/type from an item name
+    // Get item type for grouping
     const getItemType = (name: string): string => {
-      return name
-        .toLowerCase()
+      return name.toLowerCase()
         .replace(/[0-9]+/g, '')
         .replace(/copy/gi, '')
         .replace(/_+/g, ' ')
@@ -1135,97 +1127,26 @@ export function StepLayout({
         .trim();
     };
 
-    // Group items by their type
+    // Group items by type
     const groups = new Map<string, LayoutItem[]>();
     layoutItems.forEach(item => {
       const type = getItemType(item.name);
-      if (!groups.has(type)) {
-        groups.set(type, []);
-      }
+      if (!groups.has(type)) groups.set(type, []);
       groups.get(type)!.push(item);
     });
 
-    // Separate into: large unique items, small unique items, and groups of similar items
-    const largeUniqueItems: LayoutItem[] = [];
-    const smallUniqueItems: LayoutItem[] = [];
-    const similarGroups: LayoutItem[][] = [];
-
-    groups.forEach((items) => {
-      if (items.length === 1) {
-        const item = items[0];
-        const area = item.width * item.height;
-        if (area > 15 || item.width > safeAreaWidth * 0.3 || item.height > safeAreaHeight * 0.3) {
-          largeUniqueItems.push(item);
-        } else {
-          smallUniqueItems.push(item);
-        }
-      } else {
-        similarGroups.push(items);
-      }
-    });
-
-    // Sort large items by area (largest first)
-    largeUniqueItems.sort((a, b) => (b.width * b.height) - (a.width * a.height));
-
-    // Sort similar groups by item count (more items = place first to get good column position)
-    similarGroups.sort((a, b) => b.length - a.length);
+    // Sort all items by area (largest first) for optimal packing
+    const allItemsSorted = [...layoutItems].sort((a, b) =>
+      (b.width * b.height) - (a.width * a.height)
+    );
 
     const arranged: LayoutItem[] = [];
 
-    // 1. Place large unique items first (top-left area)
-    let nextLargeY = safeAreaY;
-    let largeItemsRightEdge = safeAreaX;
-
-    largeUniqueItems.forEach(item => {
-      const pos = findPosition(item.width, item.height, safeAreaX, nextLargeY);
-      if (pos) {
-        arranged.push({ ...item, x: pos.x, y: pos.y });
-        placedItems.push({ x: pos.x, y: pos.y, width: item.width, height: item.height });
-        largeItemsRightEdge = Math.max(largeItemsRightEdge, pos.x + item.width);
-        nextLargeY = pos.y + item.height + padding;
-      }
-    });
-
-    // 2. Stack similar item groups vertically in columns on the right side
-    let columnX = maxX; // Start from right edge
-
-    similarGroups.forEach(items => {
-      const maxItemWidth = Math.max(...items.map(i => i.width));
-
-      // Try to place column on the right
-      let tryColumnX = columnX - maxItemWidth;
-      let columnY = safeAreaY;
-
-      // If column would overlap with large items, find space
-      if (tryColumnX < largeItemsRightEdge + padding) {
-        // Try placing below large items instead
-        tryColumnX = safeAreaX;
-        // Find the bottom of placed items
-        const bottomY = placedItems.reduce((max, p) => Math.max(max, p.y + p.height), safeAreaY);
-        columnY = bottomY + padding;
-      }
-
-      // Stack items vertically
-      items.forEach(item => {
-        const pos = findPosition(item.width, item.height, tryColumnX, columnY);
-        if (pos) {
-          arranged.push({ ...item, x: pos.x, y: pos.y });
-          placedItems.push({ x: pos.x, y: pos.y, width: item.width, height: item.height });
-          columnY = pos.y + item.height + padding;
-        }
-      });
-
-      // Update column position for next group
-      columnX = tryColumnX - padding;
-    });
-
-    // 3. Place small unique items in remaining space
-    smallUniqueItems.forEach(item => {
+    // Place items one by one, largest first
+    allItemsSorted.forEach(item => {
       const pos = findPosition(item.width, item.height);
-      if (pos) {
-        arranged.push({ ...item, x: pos.x, y: pos.y });
-        placedItems.push({ x: pos.x, y: pos.y, width: item.width, height: item.height });
-      }
+      arranged.push({ ...item, x: pos.x, y: pos.y });
+      placed.push({ x: pos.x, y: pos.y, w: item.width, h: item.height });
     });
 
     setLayoutItems(arranged);
