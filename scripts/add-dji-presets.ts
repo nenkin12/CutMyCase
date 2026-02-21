@@ -364,9 +364,5 @@ async function addPresets() {
   console.log("\nDone!");
 }
 
-// Export for use as module or run directly
-if (require.main === module) {
-  addPresets();
-}
-
-export { presets, roundedRect, droneShape };
+// Run the script
+addPresets();

@@ -718,6 +718,23 @@ export default function AdminPresetsPage() {
               <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
               Refresh
             </Button>
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                if (!confirm("This will add 22 DJI drone/battery/controller presets. Continue?")) return;
+                try {
+                  const res = await fetch("/api/presets/seed", { method: "POST" });
+                  const data = await res.json();
+                  alert(data.message || "Presets seeded!");
+                  fetchPresets();
+                } catch (err) {
+                  alert("Failed to seed presets");
+                }
+              }}
+            >
+              <Package className="w-4 h-4 mr-2" />
+              Seed DJI Presets
+            </Button>
             <Button variant="secondary" onClick={() => setShowFromScanModal(true)}>
               <Upload className="w-4 h-4 mr-2" />
               From Scan
