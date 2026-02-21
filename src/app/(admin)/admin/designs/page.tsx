@@ -298,6 +298,107 @@ function DesignPreviewCanvas({
   );
 }
 
+// Shape refinement options
+const REFINEMENT_OPTIONS = [
+  { id: "category", label: "Auto (by category)", description: "Intelligently refine based on item type" },
+  { id: "smooth", label: "Smooth", description: "Round out rough edges" },
+  { id: "simplify", label: "Simplify", description: "Reduce complexity while preserving shape" },
+  { id: "rectangle", label: "Rectangle", description: "Convert to sharp rectangle" },
+  { id: "rounded_rectangle", label: "Rounded Rectangle", description: "Rectangle with rounded corners" },
+  { id: "oval", label: "Oval", description: "Convert to oval/ellipse shape" },
+  { id: "convex_hull", label: "Convex Hull", description: "Wrap to outer boundary" },
+];
+
+// Component to show before/after shape comparison
+function ShapeComparisonCanvas({
+  originalPoints,
+  refinedPoints,
+  color
+}: {
+  originalPoints: number[][];
+  refinedPoints: number[][] | null;
+  color: string;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !originalPoints || originalPoints.length < 3) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Calculate combined bounding box
+    const allPoints = refinedPoints ? [...originalPoints, ...refinedPoints] : originalPoints;
+    const xs = allPoints.map(p => p[0]);
+    const ys = allPoints.map(p => p[1]);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    const maxX = Math.max(...xs);
+    const maxY = Math.max(...ys);
+    const width = maxX - minX;
+    const height = maxY - minY;
+
+    const padding = 20;
+    const scale = Math.min((300 - padding * 2) / width, (200 - padding * 2) / height, 1);
+    canvas.width = 300;
+    canvas.height = 200;
+
+    // Clear
+    ctx.fillStyle = "#0d0d0d";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Center offset
+    const offsetX = (canvas.width - width * scale) / 2 - minX * scale;
+    const offsetY = (canvas.height - height * scale) / 2 - minY * scale;
+
+    // Draw original (faded)
+    ctx.save();
+    ctx.translate(offsetX, offsetY);
+    ctx.scale(scale, scale);
+
+    ctx.beginPath();
+    ctx.moveTo(originalPoints[0][0], originalPoints[0][1]);
+    for (let i = 1; i < originalPoints.length; i++) {
+      ctx.lineTo(originalPoints[i][0], originalPoints[i][1]);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = "#666";
+    ctx.lineWidth = 1 / scale;
+    ctx.setLineDash([5 / scale, 5 / scale]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Draw refined (if available)
+    if (refinedPoints && refinedPoints.length >= 3) {
+      ctx.beginPath();
+      ctx.moveTo(refinedPoints[0][0], refinedPoints[0][1]);
+      for (let i = 1; i < refinedPoints.length; i++) {
+        ctx.lineTo(refinedPoints[i][0], refinedPoints[i][1]);
+      }
+      ctx.closePath();
+      ctx.fillStyle = color + "40";
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2 / scale;
+      ctx.stroke();
+    }
+
+    ctx.restore();
+
+    // Labels
+    ctx.font = "10px sans-serif";
+    ctx.fillStyle = "#666";
+    ctx.fillText(`Original: ${originalPoints.length} points`, 10, 15);
+    if (refinedPoints) {
+      ctx.fillStyle = color;
+      ctx.fillText(`Refined: ${refinedPoints.length} points`, 10, 28);
+    }
+  }, [originalPoints, refinedPoints, color]);
+
+  return <canvas ref={canvasRef} className="w-full h-auto rounded-lg border border-border" />;
+}
+
 export default function DesignsPage() {
   const [designs, setDesigns] = useState<Design[]>([]);
   const [loading, setLoading] = useState(true);
@@ -310,6 +411,11 @@ export default function DesignsPage() {
   const [editCategory, setEditCategory] = useState("");
   const [editPrompt, setEditPrompt] = useState("");
   const [editName, setEditName] = useState("");
+
+  // Shape refinement states
+  const [refinementType, setRefinementType] = useState("category");
+  const [refinedPoints, setRefinedPoints] = useState<number[][] | null>(null);
+  const [refining, setRefining] = useState(false);
 
   const fetchDesigns = async () => {
     setLoading(true);
@@ -343,6 +449,85 @@ export default function DesignsPage() {
   }, [selectedDesign, selectedItemId]);
 
   const selectedItem = selectedDesign?.items.find(i => i.id === selectedItemId);
+
+  // Reset refinement when selecting new item
+  useEffect(() => {
+    setRefinedPoints(null);
+    setRefinementType("category");
+  }, [selectedItemId]);
+
+  // Refine shape using API
+  const refineShape = async () => {
+    if (!selectedItem || !selectedItem.points) return;
+
+    setRefining(true);
+    setRefinedPoints(null);
+
+    try {
+      const res = await fetch("/api/designs/refine", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          points: selectedItem.points,
+          category: editCategory,
+          prompt: editPrompt,
+          refinementType,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setRefinedPoints(data.refinedPoints);
+      }
+    } catch (error) {
+      console.error("Failed to refine shape:", error);
+    } finally {
+      setRefining(false);
+    }
+  };
+
+  // Apply refined shape to the item
+  const applyRefinedShape = async () => {
+    if (!selectedDesign || !selectedItemId || !refinedPoints) return;
+
+    setSaving(true);
+    try {
+      const updatedItems = selectedDesign.items.map(item => {
+        if (item.id === selectedItemId) {
+          return {
+            ...item,
+            points: refinedPoints,
+            aiCategory: editCategory,
+            aiPrompt: editPrompt,
+            correctedName: editName !== item.name ? editName : undefined,
+          };
+        }
+        return item;
+      });
+
+      const res = await fetch("/api/designs", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: selectedDesign.id,
+          items: updatedItems,
+          reviewed: true,
+          reviewedAt: new Date().toISOString(),
+        }),
+      });
+
+      if (res.ok) {
+        const updated = await res.json();
+        setDesigns(prev => prev.map(d => d.id === updated.id ? updated : d));
+        setSelectedDesign(updated);
+        setRefinedPoints(null);
+      }
+    } catch (error) {
+      console.error("Failed to apply refinement:", error);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const saveItemFeedback = async () => {
     if (!selectedDesign || !selectedItemId) return;
@@ -654,8 +839,76 @@ export default function DesignsPage() {
                         </p>
                       </div>
 
+                      {/* Shape Refinement Section */}
+                      <div className="border-t border-border pt-4">
+                        <h4 className="text-xs font-medium text-accent mb-3 flex items-center gap-2">
+                          <Sparkles className="w-3 h-3" />
+                          Shape Refinement
+                        </h4>
+
+                        {/* Refinement Type */}
+                        <div className="mb-3">
+                          <label className="text-xs text-text-muted block mb-1">
+                            Refinement Method
+                          </label>
+                          <select
+                            value={refinementType}
+                            onChange={(e) => setRefinementType(e.target.value)}
+                            className="w-full px-3 py-2 bg-dark border border-border rounded text-sm focus:outline-none focus:border-accent"
+                          >
+                            {REFINEMENT_OPTIONS.map(opt => (
+                              <option key={opt.id} value={opt.id}>
+                                {opt.label} - {opt.description}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Refine Button */}
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={refineShape}
+                          disabled={refining}
+                          className="w-full mb-3"
+                        >
+                          {refining ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                              Refining...
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="w-4 h-4 mr-2" />
+                              Preview Refined Shape
+                            </>
+                          )}
+                        </Button>
+
+                        {/* Shape Comparison Preview */}
+                        {selectedItem.points && (
+                          <ShapeComparisonCanvas
+                            originalPoints={selectedItem.points}
+                            refinedPoints={refinedPoints}
+                            color={selectedItem.color}
+                          />
+                        )}
+
+                        {/* Apply Refinement Button */}
+                        {refinedPoints && (
+                          <Button
+                            onClick={applyRefinedShape}
+                            disabled={saving}
+                            className="w-full mt-3 bg-success hover:bg-success/90"
+                          >
+                            <CheckCircle className="w-4 h-4 mr-2" />
+                            {saving ? "Applying..." : "Apply Refined Shape"}
+                          </Button>
+                        )}
+                      </div>
+
                       {/* Item Info */}
-                      <div className="grid grid-cols-2 gap-4 text-xs">
+                      <div className="grid grid-cols-2 gap-4 text-xs border-t border-border pt-4">
                         <div>
                           <span className="text-text-muted">Points:</span>
                           <span className="ml-2">{selectedItem.points?.length || 0}</span>
@@ -673,7 +926,7 @@ export default function DesignsPage() {
                         className="w-full"
                       >
                         <Save className="w-4 h-4 mr-2" />
-                        {saving ? "Saving..." : "Save AI Feedback"}
+                        {saving ? "Saving..." : "Save AI Feedback (without shape change)"}
                       </Button>
                     </CardContent>
                   </Card>
