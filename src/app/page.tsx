@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { ArrowRight, Check, Star, Phone, Play, Shield, Target, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { UserMenu } from "@/components/layout/user-menu";
 
 // Hero illustration - tactical case with firearm cutouts (based on reference image)
 function HeroIllustration() {
@@ -563,9 +564,12 @@ export default function Home() {
               <Link href="/cases" className="text-sm text-zinc-400 hover:text-orange-500 transition-colors">Cases</Link>
               <Link href="/upload" className="text-sm text-zinc-400 hover:text-orange-500 transition-colors">Custom Cut</Link>
             </nav>
-            <Link href="/upload">
-              <Button size="sm">Get Started</Button>
-            </Link>
+            <div className="flex items-center gap-3">
+              <UserMenu />
+              <Link href="/upload">
+                <Button size="sm">Get Started</Button>
+              </Link>
+            </div>
           </div>
         </div>
       </header>
