@@ -46,13 +46,13 @@ export function StepSegment({
   // Hybrid approach state
   const [cleanedImageData, setCleanedImageData] = useState<ImageData | null>(null);
   const [margin, setMargin] = useState(5);        // Pixels of padding around objects
-  const [gapFill, setGapFill] = useState(15);     // Bridge over gaps/concavities
+  const [gapFill, setGapFill] = useState(28);     // Bridge over gaps/concavities
   const [smoothing, setSmoothing] = useState(1);  // Contour smoothing level
 
   // AI scanning animation state
   const [scanProgress, setScanProgress] = useState(0);
   const [scanPhase, setScanPhase] = useState<string>("");
-  const [minArea, setMinArea] = useState(2000);   // Minimum object area in pixels
+  const [minArea, setMinArea] = useState(1000);   // Minimum object area in pixels
 
   // Template matching state
   const [templateMatches, setTemplateMatches] = useState<Record<string, { name: string; category: string; confidence: number } | null>>({});
