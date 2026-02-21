@@ -1074,11 +1074,20 @@ export function StepLayout({
 
   const autoArrange = () => {
     // Smart auto-arrange: large items first, then stack similar items in columns
+    // ALL items must stay within the case boundaries
     const padding = 0.3; // inches between items
     const safeAreaX = BORDER_MARGIN;
     const safeAreaY = BORDER_MARGIN;
     const safeAreaWidth = currentCase.innerWidth - 2 * BORDER_MARGIN;
     const safeAreaHeight = currentCase.innerHeight - 2 * BORDER_MARGIN;
+    const maxX = safeAreaX + safeAreaWidth;
+    const maxY = safeAreaY + safeAreaHeight;
+
+    // Helper to clamp position within bounds
+    const clampPosition = (x: number, y: number, width: number, height: number) => ({
+      x: Math.max(safeAreaX, Math.min(x, maxX - width)),
+      y: Math.max(safeAreaY, Math.min(y, maxY - height)),
+    });
 
     // Extract the base name/type from an item name
     const getItemType = (name: string): string => {
@@ -1125,97 +1134,118 @@ export function StepLayout({
     // Sort large items by area (largest first)
     largeUniqueItems.sort((a, b) => (b.width * b.height) - (a.width * a.height));
 
-    // Sort similar groups by total area
+    // Sort similar groups by total height (to stack efficiently)
+    similarGroups.forEach(group => {
+      group.sort((a, b) => (b.width * b.height) - (a.width * a.height));
+    });
     similarGroups.sort((a, b) => {
-      const areaA = a.reduce((sum, item) => sum + item.width * item.height, 0);
-      const areaB = b.reduce((sum, item) => sum + item.width * item.height, 0);
-      return areaB - areaA;
+      const heightA = a.reduce((sum, item) => sum + item.height + padding, 0);
+      const heightB = b.reduce((sum, item) => sum + item.height + padding, 0);
+      return heightB - heightA;
     });
 
     const arranged: LayoutItem[] = [];
 
-    // Track used space - simple approach: track rightmost edge of large items
+    // Track used space
     let largeItemsRightEdge = safeAreaX;
     let largeItemsBottomEdge = safeAreaY;
 
     // 1. Place large unique items first (top-left area)
     let largeY = safeAreaY;
     largeUniqueItems.forEach(item => {
+      const pos = clampPosition(safeAreaX, largeY, item.width, item.height);
       arranged.push({
         ...item,
-        x: safeAreaX,
-        y: largeY,
+        x: pos.x,
+        y: pos.y,
       });
-      largeItemsRightEdge = Math.max(largeItemsRightEdge, safeAreaX + item.width);
-      largeY += item.height + padding;
-      largeItemsBottomEdge = largeY;
+      largeItemsRightEdge = Math.max(largeItemsRightEdge, pos.x + item.width);
+      largeY = pos.y + item.height + padding;
+      largeItemsBottomEdge = Math.max(largeItemsBottomEdge, largeY);
     });
 
     // 2. Stack similar item groups vertically in columns on the right side
-    // Start from the right edge of the case and work left
-    let columnX = safeAreaX + safeAreaWidth; // Start from right
+    // Calculate available space on the right
+    const rightColumnSpace = maxX - largeItemsRightEdge - padding;
+
+    // Start columns from the right edge
+    let columnRightEdge = maxX;
 
     similarGroups.forEach(items => {
       // Find max width in this group
       const maxWidth = Math.max(...items.map(i => i.width));
+      const totalHeight = items.reduce((sum, i) => sum + i.height + padding, 0) - padding;
 
-      // Position column from the right
-      columnX -= maxWidth + padding;
-
-      // If column would overlap with large items, place below them instead
+      // Position this column
+      let columnX = columnRightEdge - maxWidth;
       let columnY = safeAreaY;
-      if (columnX < largeItemsRightEdge + padding) {
-        // Not enough room on right, try below large items
+
+      // Check if column fits on the right side
+      if (columnX < largeItemsRightEdge + padding || totalHeight > safeAreaHeight) {
+        // Not enough room on right, place below large items
         columnX = safeAreaX;
         columnY = largeItemsBottomEdge;
+
+        // If still doesn't fit, just place at start
+        if (columnY + items[0].height > maxY) {
+          columnY = safeAreaY;
+        }
       }
 
       // Stack items vertically in this column
       items.forEach(item => {
-        // Check if item fits vertically
-        if (columnY + item.height > safeAreaY + safeAreaHeight) {
-          // Start a new column to the left
-          columnX -= maxWidth + padding;
+        // Check if item fits vertically, if not start new column
+        if (columnY + item.height > maxY) {
+          // Move to a new column to the left
+          columnRightEdge = columnX - padding;
+          columnX = Math.max(safeAreaX, columnRightEdge - maxWidth);
           columnY = safeAreaY;
         }
 
+        const pos = clampPosition(columnX, columnY, item.width, item.height);
         arranged.push({
           ...item,
-          x: columnX,
-          y: columnY,
+          x: pos.x,
+          y: pos.y,
         });
 
-        columnY += item.height + padding;
+        columnY = pos.y + item.height + padding;
       });
+
+      // Update right edge for next group
+      columnRightEdge = columnX - padding;
     });
 
-    // 3. Place small unique items in remaining space
-    // Try to fit them below large items or in gaps
+    // 3. Place small unique items in remaining space (below large items)
     let smallX = safeAreaX;
     let smallY = largeItemsBottomEdge;
+    let rowHeight = 0;
 
-    // If there's space next to large items (below them), use it
     smallUniqueItems.forEach(item => {
-      // Check if item fits in current position
-      if (smallX + item.width > columnX - padding && columnX > safeAreaX) {
-        // Would overlap with stacked columns, wrap to next row
+      // Check if item fits in current row
+      if (smallX + item.width > maxX) {
+        // Move to next row
         smallX = safeAreaX;
-        smallY += item.height + padding;
+        smallY += rowHeight + padding;
+        rowHeight = 0;
       }
 
-      if (smallY + item.height > safeAreaY + safeAreaHeight) {
-        // Try fitting in remaining gaps - for now just place it
-        smallY = safeAreaY;
+      // Check if we've run out of vertical space, wrap to top-right area
+      if (smallY + item.height > maxY) {
         smallX = largeItemsRightEdge + padding;
+        smallY = safeAreaY;
+        rowHeight = 0;
       }
 
+      const pos = clampPosition(smallX, smallY, item.width, item.height);
       arranged.push({
         ...item,
-        x: smallX,
-        y: smallY,
+        x: pos.x,
+        y: pos.y,
       });
 
-      smallX += item.width + padding;
+      smallX = pos.x + item.width + padding;
+      rowHeight = Math.max(rowHeight, item.height);
     });
 
     setLayoutItems(arranged);
