@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
-import { Upload, Image as ImageIcon, X, Cpu, Sparkles, RotateCw } from "lucide-react";
+import { Upload, Image as ImageIcon, X, Cpu, Sparkles, RotateCw, AlertCircle, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -94,10 +94,22 @@ export function StepUpload({ onComplete }: StepUploadProps) {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadPhase, setUploadPhase] = useState(0);
   const [rotation, setRotation] = useState(0);
+  const [showRulesModal, setShowRulesModal] = useState(false);
+  const [hasReadRules, setHasReadRules] = useState(false);
 
   const rotateImage = () => {
     setRotation((prev) => (prev + 90) % 360);
   };
+
+  // Show rules modal on first visit
+  useEffect(() => {
+    const hasSeenRules = sessionStorage.getItem('cutmycase-seen-rules');
+    if (!hasSeenRules) {
+      setShowRulesModal(true);
+    } else {
+      setHasReadRules(true);
+    }
+  }, []);
 
   useEffect(() => {
     if (!isUploading) {
@@ -215,12 +227,84 @@ export function StepUpload({ onComplete }: StepUploadProps) {
 
   return (
     <div className="space-y-6">
+      {/* Rules Modal */}
+      {showRulesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className="bg-surface border border-border rounded-lg p-6 max-w-md mx-4 shadow-xl">
+            <div className="flex items-center gap-3 mb-4">
+              <AlertCircle className="w-6 h-6 text-accent" />
+              <h3 className="text-xl font-heading">Important: Upload Rules</h3>
+            </div>
+
+            <p className="text-text-secondary mb-4">
+              Please read these guidelines to ensure accurate detection:
+            </p>
+
+            <ul className="space-y-3 mb-6">
+              <li className="flex items-start gap-2">
+                <CheckCircle className="w-4 h-4 text-accent mt-1 shrink-0" />
+                <span className="text-sm">Lay items flat on a contrasting background (white or solid color)</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle className="w-4 h-4 text-accent mt-1 shrink-0" />
+                <span className="text-sm">Include a reference object (quarter, ruler, or credit card) for accurate sizing</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle className="w-4 h-4 text-accent mt-1 shrink-0" />
+                <span className="text-sm">Ensure good, even lighting with minimal shadows</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle className="w-4 h-4 text-accent mt-1 shrink-0" />
+                <span className="text-sm">Keep camera parallel to the surface (top-down view)</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle className="w-4 h-4 text-accent mt-1 shrink-0" />
+                <span className="text-sm">Leave space between items so they don&apos;t touch</span>
+              </li>
+            </ul>
+
+            <Button
+              onClick={() => {
+                setHasReadRules(true);
+                setShowRulesModal(false);
+                sessionStorage.setItem('cutmycase-seen-rules', 'true');
+              }}
+              className="w-full"
+            >
+              I Understand
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="text-center">
         <h2 className="text-2xl sm:text-3xl font-heading mb-2">Upload Your Gear Photo</h2>
         <p className="text-text-secondary text-sm sm:text-base">
           Take a top-down photo of your equipment laid out on a flat surface
         </p>
       </div>
+
+      {/* Tips Section - Above Upload */}
+      {!preview && !isUploading && (
+        <div className="bg-carbon rounded-[4px] p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="font-medium text-sm">Tips for best results:</h4>
+            <button
+              onClick={() => setShowRulesModal(true)}
+              className="text-xs text-accent hover:underline flex items-center gap-1"
+            >
+              <AlertCircle className="w-3 h-3" />
+              Read full guidelines
+            </button>
+          </div>
+          <ul className="text-sm text-text-secondary space-y-1">
+            <li>• Lay items flat on a contrasting background</li>
+            <li>• Include a reference object (quarter, ruler, or credit card)</li>
+            <li>• Ensure good lighting with minimal shadows</li>
+            <li>• Keep camera parallel to the surface (top-down view)</li>
+          </ul>
+        </div>
+      )}
 
       {!preview ? (
         <div
@@ -343,18 +427,6 @@ export function StepUpload({ onComplete }: StepUploadProps) {
       {error && (
         <div className="p-4 bg-error/10 border border-error/30 rounded-[4px] text-error text-sm">
           {error}
-        </div>
-      )}
-
-      {!isUploading && (
-        <div className="bg-carbon rounded-[4px] p-4 space-y-2">
-          <h4 className="font-medium text-sm">Tips for best results:</h4>
-          <ul className="text-sm text-text-secondary space-y-1">
-            <li>• Lay items flat on a contrasting background</li>
-            <li>• Include a reference object (quarter, ruler, or credit card)</li>
-            <li>• Ensure good lighting with minimal shadows</li>
-            <li>• Keep camera parallel to the surface (top-down view)</li>
-          </ul>
         </div>
       )}
 
