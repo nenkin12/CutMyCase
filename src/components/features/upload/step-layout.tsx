@@ -1073,21 +1073,21 @@ export function StepLayout({
   }, [processPoints]);
 
   const autoArrange = () => {
-    // Smart auto-arrange: group similar items together for an organized, aesthetic layout
+    // Smart auto-arrange: large items first, then stack similar items in columns
     const padding = 0.3; // inches between items
-    const groupPadding = 0.5; // extra padding between groups
-    const safeAreaStart = BORDER_MARGIN; // 1 inch margin from edges
+    const safeAreaX = BORDER_MARGIN;
+    const safeAreaY = BORDER_MARGIN;
     const safeAreaWidth = currentCase.innerWidth - 2 * BORDER_MARGIN;
     const safeAreaHeight = currentCase.innerHeight - 2 * BORDER_MARGIN;
 
-    // Extract the base name/type from an item name (removes numbers, "copy", etc.)
+    // Extract the base name/type from an item name
     const getItemType = (name: string): string => {
       return name
         .toLowerCase()
-        .replace(/[0-9]+/g, '') // Remove numbers
-        .replace(/copy/gi, '') // Remove "copy"
-        .replace(/_+/g, ' ') // Replace underscores with spaces
-        .replace(/\s+/g, ' ') // Normalize spaces
+        .replace(/[0-9]+/g, '')
+        .replace(/copy/gi, '')
+        .replace(/_+/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim();
     };
 
@@ -1101,106 +1101,121 @@ export function StepLayout({
       groups.get(type)!.push(item);
     });
 
-    // Sort groups: larger total area first (more important items get prime placement)
-    const sortedGroups = Array.from(groups.entries()).sort((a, b) => {
-      const areaA = a[1].reduce((sum, item) => sum + item.width * item.height, 0);
-      const areaB = b[1].reduce((sum, item) => sum + item.width * item.height, 0);
+    // Separate into: large unique items, and groups of similar items
+    const largeUniqueItems: LayoutItem[] = [];
+    const smallUniqueItems: LayoutItem[] = [];
+    const similarGroups: LayoutItem[][] = [];
+
+    groups.forEach((items) => {
+      if (items.length === 1) {
+        // Single item - categorize by size
+        const item = items[0];
+        const area = item.width * item.height;
+        if (area > 20 || item.width > safeAreaWidth * 0.4 || item.height > safeAreaHeight * 0.4) {
+          largeUniqueItems.push(item);
+        } else {
+          smallUniqueItems.push(item);
+        }
+      } else {
+        // Multiple similar items - will be stacked
+        similarGroups.push(items);
+      }
+    });
+
+    // Sort large items by area (largest first)
+    largeUniqueItems.sort((a, b) => (b.width * b.height) - (a.width * a.height));
+
+    // Sort similar groups by total area
+    similarGroups.sort((a, b) => {
+      const areaA = a.reduce((sum, item) => sum + item.width * item.height, 0);
+      const areaB = b.reduce((sum, item) => sum + item.width * item.height, 0);
       return areaB - areaA;
     });
 
-    // Within each group, sort items by size (largest first) for consistent look
-    sortedGroups.forEach(([, items]) => {
-      items.sort((a, b) => (b.width * b.height) - (a.width * a.height));
+    const arranged: LayoutItem[] = [];
+
+    // Track used space - simple approach: track rightmost edge of large items
+    let largeItemsRightEdge = safeAreaX;
+    let largeItemsBottomEdge = safeAreaY;
+
+    // 1. Place large unique items first (top-left area)
+    let largeY = safeAreaY;
+    largeUniqueItems.forEach(item => {
+      arranged.push({
+        ...item,
+        x: safeAreaX,
+        y: largeY,
+      });
+      largeItemsRightEdge = Math.max(largeItemsRightEdge, safeAreaX + item.width);
+      largeY += item.height + padding;
+      largeItemsBottomEdge = largeY;
     });
 
-    // Arrange items group by group
-    const arranged: LayoutItem[] = [];
-    let currentX = safeAreaStart;
-    let currentY = safeAreaStart;
-    let rowHeight = 0;
-    let isFirstInGroup = true;
+    // 2. Stack similar item groups vertically in columns on the right side
+    // Start from the right edge of the case and work left
+    let columnX = safeAreaX + safeAreaWidth; // Start from right
 
-    sortedGroups.forEach(([groupType, items], groupIndex) => {
-      // Add extra spacing between groups (but not before first group)
-      if (groupIndex > 0 && !isFirstInGroup) {
-        // Try to start a new row for new group if we're not at the start
-        if (currentX > safeAreaStart + 1) {
-          currentX = safeAreaStart;
-          currentY += rowHeight + groupPadding;
-          rowHeight = 0;
-        }
+    similarGroups.forEach(items => {
+      // Find max width in this group
+      const maxWidth = Math.max(...items.map(i => i.width));
+
+      // Position column from the right
+      columnX -= maxWidth + padding;
+
+      // If column would overlap with large items, place below them instead
+      let columnY = safeAreaY;
+      if (columnX < largeItemsRightEdge + padding) {
+        // Not enough room on right, try below large items
+        columnX = safeAreaX;
+        columnY = largeItemsBottomEdge;
       }
 
-      isFirstInGroup = true;
-
-      // Check if all items in this group are similar size (for grid alignment)
-      const avgWidth = items.reduce((sum, i) => sum + i.width, 0) / items.length;
-      const avgHeight = items.reduce((sum, i) => sum + i.height, 0) / items.length;
-      const isSimilarSize = items.every(i =>
-        Math.abs(i.width - avgWidth) < 0.5 && Math.abs(i.height - avgHeight) < 0.5
-      );
-
-      // For similar-sized items (like magazines, batteries), try to align in a grid
-      if (isSimilarSize && items.length > 1) {
-        // Calculate how many can fit per row
-        const itemsPerRow = Math.floor((safeAreaWidth - (currentX - safeAreaStart)) / (avgWidth + padding)) || 1;
-
-        // If we can't fit even one, start new row
-        if (currentX + avgWidth > safeAreaStart + safeAreaWidth) {
-          currentX = safeAreaStart;
-          currentY += rowHeight + padding;
-          rowHeight = 0;
+      // Stack items vertically in this column
+      items.forEach(item => {
+        // Check if item fits vertically
+        if (columnY + item.height > safeAreaY + safeAreaHeight) {
+          // Start a new column to the left
+          columnX -= maxWidth + padding;
+          columnY = safeAreaY;
         }
 
-        const groupStartX = currentX;
-        let groupRowCount = 0;
-
-        items.forEach((item, idx) => {
-          // Check if item fits in current row
-          if (currentX + item.width > safeAreaStart + safeAreaWidth) {
-            currentX = groupStartX; // Align with group start for visual consistency
-            currentY += rowHeight + padding;
-            rowHeight = 0;
-            groupRowCount++;
-          }
-
-          arranged.push({
-            ...item,
-            x: currentX,
-            y: currentY,
-          });
-
-          currentX += item.width + padding;
-          rowHeight = Math.max(rowHeight, item.height);
-          isFirstInGroup = false;
+        arranged.push({
+          ...item,
+          x: columnX,
+          y: columnY,
         });
 
-        // After placing a grid group, move to next row for next group
-        currentX = safeAreaStart;
-        currentY += rowHeight + groupPadding;
-        rowHeight = 0;
+        columnY += item.height + padding;
+      });
+    });
 
-      } else {
-        // For mixed-size items, place them in order
-        items.forEach(item => {
-          // Check if item fits in current row within safe area
-          if (currentX + item.width > safeAreaStart + safeAreaWidth) {
-            currentX = safeAreaStart;
-            currentY += rowHeight + padding;
-            rowHeight = 0;
-          }
+    // 3. Place small unique items in remaining space
+    // Try to fit them below large items or in gaps
+    let smallX = safeAreaX;
+    let smallY = largeItemsBottomEdge;
 
-          arranged.push({
-            ...item,
-            x: currentX,
-            y: currentY,
-          });
-
-          currentX += item.width + padding;
-          rowHeight = Math.max(rowHeight, item.height);
-          isFirstInGroup = false;
-        });
+    // If there's space next to large items (below them), use it
+    smallUniqueItems.forEach(item => {
+      // Check if item fits in current position
+      if (smallX + item.width > columnX - padding && columnX > safeAreaX) {
+        // Would overlap with stacked columns, wrap to next row
+        smallX = safeAreaX;
+        smallY += item.height + padding;
       }
+
+      if (smallY + item.height > safeAreaY + safeAreaHeight) {
+        // Try fitting in remaining gaps - for now just place it
+        smallY = safeAreaY;
+        smallX = largeItemsRightEdge + padding;
+      }
+
+      arranged.push({
+        ...item,
+        x: smallX,
+        y: smallY,
+      });
+
+      smallX += item.width + padding;
     });
 
     setLayoutItems(arranged);
