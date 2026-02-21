@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// In-memory store for development (will use Firestore in production)
-// For production, this should be replaced with Firestore calls
-const sessions = new Map<string, {
+const FIREBASE_PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+const FIRESTORE_URL = FIREBASE_PROJECT_ID
+  ? `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`
+  : null;
+
+interface SessionData {
   id: string;
   userId?: string;
   userEmail?: string;
@@ -17,86 +20,129 @@ const sessions = new Map<string, {
   }>;
   imageUrl?: string;
   itemCount?: number;
-}>();
+}
 
-// Firestore-based storage
-async function saveToFirestore(sessionId: string, data: unknown) {
+// Save session to Firestore (creates or updates)
+async function saveToFirestore(sessionId: string, data: SessionData): Promise<boolean> {
+  if (!FIRESTORE_URL) {
+    console.log("Firestore not configured");
+    return false;
+  }
+
   try {
-    // Use Firestore REST API
-    const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-    if (!projectId) {
-      console.log("Firestore not configured, using in-memory storage");
-      return;
-    }
+    // Use PATCH with updateMask to create or update
+    const url = `${FIRESTORE_URL}/analytics/${sessionId}`;
 
-    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/analytics/${sessionId}`;
+    const firestoreData = {
+      fields: {
+        id: { stringValue: data.id },
+        userId: { stringValue: data.userId || "" },
+        userEmail: { stringValue: data.userEmail || "" },
+        startedAt: { integerValue: String(data.startedAt) },
+        lastStep: { stringValue: data.lastStep },
+        lastUpdated: { integerValue: String(data.lastUpdated) },
+        completed: { booleanValue: data.completed },
+        steps: { stringValue: JSON.stringify(data.steps) },
+        imageUrl: { stringValue: data.imageUrl || "" },
+        itemCount: { integerValue: String(data.itemCount || 0) },
+      },
+    };
 
-    await fetch(url, {
+    const response = await fetch(url, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fields: {
-          data: { stringValue: JSON.stringify(data) },
-          updatedAt: { timestampValue: new Date().toISOString() },
-        },
-      }),
+      body: JSON.stringify(firestoreData),
     });
+
+    if (!response.ok) {
+      // If PATCH fails (document doesn't exist), try creating with POST
+      const createUrl = `${FIRESTORE_URL}/analytics?documentId=${sessionId}`;
+      const createResponse = await fetch(createUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(firestoreData),
+      });
+
+      if (!createResponse.ok) {
+        console.error("Failed to create analytics document:", await createResponse.text());
+        return false;
+      }
+    }
+
+    return true;
   } catch (error) {
     console.error("Failed to save to Firestore:", error);
+    return false;
   }
 }
 
-async function getFromFirestore(sessionId: string) {
-  try {
-    const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-    if (!projectId) return null;
+async function getFromFirestore(sessionId: string): Promise<SessionData | null> {
+  if (!FIRESTORE_URL) return null;
 
-    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/analytics/${sessionId}`;
+  try {
+    const url = `${FIRESTORE_URL}/analytics/${sessionId}`;
     const response = await fetch(url);
 
     if (!response.ok) return null;
 
     const doc = await response.json();
-    if (doc.fields?.data?.stringValue) {
-      return JSON.parse(doc.fields.data.stringValue);
-    }
-    return null;
+    return firestoreToSession(doc);
   } catch (error) {
     console.error("Failed to get from Firestore:", error);
     return null;
   }
 }
 
-async function getAllSessions() {
-  try {
-    const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-    if (!projectId) {
-      // Return in-memory sessions
-      return Array.from(sessions.values());
-    }
+// Convert Firestore document to SessionData
+function firestoreToSession(doc: { fields?: Record<string, { stringValue?: string; integerValue?: string; booleanValue?: boolean }> }): SessionData | null {
+  if (!doc.fields) return null;
 
-    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/analytics?pageSize=100`;
+  const fields = doc.fields;
+  return {
+    id: fields.id?.stringValue || "",
+    userId: fields.userId?.stringValue || undefined,
+    userEmail: fields.userEmail?.stringValue || undefined,
+    startedAt: parseInt(fields.startedAt?.integerValue || "0"),
+    lastStep: fields.lastStep?.stringValue || "upload",
+    lastUpdated: parseInt(fields.lastUpdated?.integerValue || "0"),
+    completed: fields.completed?.booleanValue || false,
+    steps: fields.steps?.stringValue ? JSON.parse(fields.steps.stringValue) : [],
+    imageUrl: fields.imageUrl?.stringValue || undefined,
+    itemCount: parseInt(fields.itemCount?.integerValue || "0") || undefined,
+  };
+}
+
+async function getAllSessions(): Promise<SessionData[]> {
+  if (!FIRESTORE_URL) {
+    console.log("Firestore not configured, no sessions available");
+    return [];
+  }
+
+  try {
+    const url = `${FIRESTORE_URL}/analytics?pageSize=100`;
     const response = await fetch(url);
 
     if (!response.ok) {
-      return Array.from(sessions.values());
+      console.error("Failed to fetch analytics:", response.status, await response.text());
+      return [];
     }
 
     const result = await response.json();
-    const firestoreSessions: unknown[] = [];
+    const sessions: SessionData[] = [];
 
     if (result.documents) {
       for (const doc of result.documents) {
-        if (doc.fields?.data?.stringValue) {
-          firestoreSessions.push(JSON.parse(doc.fields.data.stringValue));
+        const session = firestoreToSession(doc);
+        if (session && session.id) {
+          sessions.push(session);
         }
       }
     }
 
-    return firestoreSessions;
+    return sessions;
   } catch (error) {
     console.error("Failed to get all sessions:", error);
-    return Array.from(sessions.values());
+    return [];
   }
 }
 
@@ -109,8 +155,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing sessionId" }, { status: 400 });
     }
 
-    // Get or create session
-    let session = sessions.get(sessionId) || await getFromFirestore(sessionId);
+    // Get or create session from Firestore
+    let session = await getFromFirestore(sessionId);
 
     if (!session) {
       session = {
@@ -128,7 +174,7 @@ export async function POST(request: NextRequest) {
     switch (action) {
       case "stepEnter":
         // Add step entry if not already there
-        const existingStep = session.steps.find((s: { step: string; completedAt?: number }) => s.step === step && !s.completedAt);
+        const existingStep = session.steps.find((s) => s.step === step && !s.completedAt);
         if (!existingStep) {
           session.steps.push({
             step,
@@ -145,7 +191,7 @@ export async function POST(request: NextRequest) {
 
       case "stepComplete":
         // Mark step as completed
-        const stepToComplete = session.steps.find((s: { step: string; completedAt?: number }) => s.step === step && !s.completedAt);
+        const stepToComplete = session.steps.find((s) => s.step === step && !s.completedAt);
         if (stepToComplete) {
           stepToComplete.completedAt = now;
         }
@@ -166,9 +212,11 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
 
-    // Save session
-    sessions.set(sessionId, session);
-    await saveToFirestore(sessionId, session);
+    // Save session to Firestore
+    const saved = await saveToFirestore(sessionId, session);
+    if (!saved) {
+      console.warn("Failed to save session to Firestore, but continuing");
+    }
 
     return NextResponse.json({ success: true, session });
   } catch (error) {
@@ -177,23 +225,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
-interface SessionData {
-  id: string;
-  userId?: string;
-  userEmail?: string;
-  startedAt: number;
-  lastStep: string;
-  lastUpdated: number;
-  completed: boolean;
-  steps: Array<{ step: string; enteredAt: number; completedAt?: number }>;
-  imageUrl?: string;
-  itemCount?: number;
-}
-
 export async function GET() {
   try {
     // Get all sessions for admin dashboard
-    const allSessions = await getAllSessions() as SessionData[];
+    const allSessions = await getAllSessions();
 
     // Sort by lastUpdated descending
     const sorted = allSessions.sort((a, b) => b.lastUpdated - a.lastUpdated);
