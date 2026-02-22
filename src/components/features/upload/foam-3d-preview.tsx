@@ -106,18 +106,6 @@ export function Foam3DPreview({
     fillLight.position.set(-maxDim, maxDim, -maxDim);
     scene.add(fillLight);
 
-    // Table surface
-    const tableGeometry = new THREE.BoxGeometry(maxDim * 4, 0.5, maxDim * 3);
-    const tableMaterial = new THREE.MeshStandardMaterial({
-      color: 0x2a2015,
-      roughness: 0.8,
-      metalness: 0.1,
-    });
-    const table = new THREE.Mesh(tableGeometry, tableMaterial);
-    table.position.set(0, -caseBaseHeight / 2 - 0.25 - 0.1, 0);
-    table.receiveShadow = true;
-    scene.add(table);
-
     setIsInitialized(true);
 
     // Animation loop
