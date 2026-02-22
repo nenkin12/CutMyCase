@@ -288,8 +288,9 @@ export function Foam3DPreview({
       const hole = new THREE.Mesh(cutoutGeometry, holeMaterial);
 
       // Position the cutout at foam top
+      // 2D top (small Y) -> 3D back (negative Z), 2D bottom (large Y) -> 3D front (positive Z)
       const xPos = item.x + item.width / 2 - caseWidth / 2;
-      const zPos = -(item.y + item.height / 2 - caseHeight / 2);
+      const zPos = item.y + item.height / 2 - caseHeight / 2;
       // Position at top of foam, extrusion goes down from here
       const yPos = foamTopY - cutoutDepth + 0.01;
 
