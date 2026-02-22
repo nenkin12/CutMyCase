@@ -299,14 +299,15 @@ export function Foam3DPreview({
       hole.userData.itemId = item.id;
       scene.add(hole);
 
-      // Add colored outline at the top edge - use same points as cutout
+      // Add colored outline at the top edge - must match cutout geometry after rotation
+      // After rotateX(-Math.PI/2), shape's Y becomes +Z, so outline Z = +py
       const outlinePoints: THREE.Vector3[] = [];
       if (item.points.length > 0) {
         for (let i = 0; i < item.points.length; i++) {
           const px = item.points[i][0] - item.width / 2;
-          const py = item.points[i][1] - item.height / 2;
-          // Map to 3D: X stays, Y becomes -Z (to match the zPos negation)
-          outlinePoints.push(new THREE.Vector3(px, 0, -py));
+          const py = -(item.points[i][1] - item.height / 2); // Same negation as shape
+          // After rotation: shape Y -> +Z
+          outlinePoints.push(new THREE.Vector3(px, 0, py));
         }
       } else {
         outlinePoints.push(new THREE.Vector3(-item.width / 2, 0, item.height / 2));
