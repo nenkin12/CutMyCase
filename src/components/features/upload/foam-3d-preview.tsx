@@ -39,6 +39,11 @@ export function Foam3DPreview({
   const animationIdRef = useRef<number | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
 
+  // Case dimensions
+  const caseWallThickness = 0.3;
+  const caseLipHeight = 0.5;
+  const caseBaseHeight = foamDepth + 0.5;
+
   // Initialize Three.js scene
   useEffect(() => {
     if (!containerRef.current) return;
@@ -52,11 +57,10 @@ export function Foam3DPreview({
     scene.background = new THREE.Color(0x1a1a1a);
     sceneRef.current = scene;
 
-    // Camera - positioned above and in front, looking down at the foam
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+    // Camera
+    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000);
     const maxDim = Math.max(caseWidth, caseHeight, foamDepth);
-    // Position: front-right, above, looking down at foam on table
-    camera.position.set(maxDim * 0.8, maxDim * 1.5, maxDim * 1.2);
+    camera.position.set(maxDim * 1.0, maxDim * 1.2, maxDim * 1.4);
     camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
@@ -66,6 +70,8 @@ export function Foam3DPreview({
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
@@ -75,28 +81,42 @@ export function Foam3DPreview({
     controls.dampingFactor = 0.05;
     controls.minDistance = maxDim * 0.5;
     controls.maxDistance = maxDim * 4;
-    controls.maxPolarAngle = Math.PI / 2 + 0.3; // Allow slight view from below
+    controls.maxPolarAngle = Math.PI / 2 + 0.1;
+    controls.target.set(0, 0, 0);
     controlsRef.current = controls;
 
     // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambientLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(maxDim, maxDim * 2, maxDim);
-    directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.width = 2048;
-    directionalLight.shadow.mapSize.height = 2048;
-    scene.add(directionalLight);
+    const mainLight = new THREE.DirectionalLight(0xffffff, 1.0);
+    mainLight.position.set(maxDim * 2, maxDim * 3, maxDim * 2);
+    mainLight.castShadow = true;
+    mainLight.shadow.mapSize.width = 2048;
+    mainLight.shadow.mapSize.height = 2048;
+    mainLight.shadow.camera.near = 0.1;
+    mainLight.shadow.camera.far = maxDim * 10;
+    mainLight.shadow.camera.left = -maxDim * 2;
+    mainLight.shadow.camera.right = maxDim * 2;
+    mainLight.shadow.camera.top = maxDim * 2;
+    mainLight.shadow.camera.bottom = -maxDim * 2;
+    scene.add(mainLight);
 
     const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
     fillLight.position.set(-maxDim, maxDim, -maxDim);
     scene.add(fillLight);
 
-    // Grid helper (optional, for reference)
-    const gridHelper = new THREE.GridHelper(maxDim * 2, 20, 0x333333, 0x222222);
-    gridHelper.position.y = -foamDepth / 2 - 0.1;
-    scene.add(gridHelper);
+    // Table surface
+    const tableGeometry = new THREE.BoxGeometry(maxDim * 4, 0.5, maxDim * 3);
+    const tableMaterial = new THREE.MeshStandardMaterial({
+      color: 0x2a2015,
+      roughness: 0.8,
+      metalness: 0.1,
+    });
+    const table = new THREE.Mesh(tableGeometry, tableMaterial);
+    table.position.set(0, -caseBaseHeight / 2 - 0.25 - 0.1, 0);
+    table.receiveShadow = true;
+    scene.add(table);
 
     setIsInitialized(true);
 
@@ -131,7 +151,7 @@ export function Foam3DPreview({
         container.removeChild(renderer.domElement);
       }
     };
-  }, [caseWidth, caseHeight, foamDepth]);
+  }, [caseWidth, caseHeight, foamDepth, caseBaseHeight]);
 
   // Update foam and cutouts when items change
   useEffect(() => {
@@ -139,39 +159,105 @@ export function Foam3DPreview({
 
     const scene = sceneRef.current;
 
-    // Remove existing foam meshes
+    // Remove existing case/foam meshes
     const toRemove: THREE.Object3D[] = [];
     scene.traverse((child) => {
-      if (child.userData.isFoam || child.userData.isCutout) {
+      if (child.userData.isCase || child.userData.isFoam || child.userData.isCutout) {
         toRemove.push(child);
       }
     });
     toRemove.forEach((obj) => scene.remove(obj));
 
-    // Create foam base (gray foam material)
+    // Case material (dark plastic)
+    const caseMaterial = new THREE.MeshStandardMaterial({
+      color: 0x1a1a1a,
+      roughness: 0.4,
+      metalness: 0.1,
+    });
+
+    // Case outer dimensions
+    const caseOuterWidth = caseWidth + caseWallThickness * 2;
+    const caseOuterHeight = caseHeight + caseWallThickness * 2;
+
+    // Create case bottom (tray shape)
+    const caseGroup = new THREE.Group();
+    caseGroup.userData.isCase = true;
+
+    // Case bottom
+    const bottomGeometry = new THREE.BoxGeometry(caseOuterWidth, 0.3, caseOuterHeight);
+    const bottom = new THREE.Mesh(bottomGeometry, caseMaterial);
+    bottom.position.set(0, -caseBaseHeight / 2 + 0.15, 0);
+    bottom.castShadow = true;
+    bottom.receiveShadow = true;
+    caseGroup.add(bottom);
+
+    // Case walls
+    const wallHeight = caseBaseHeight - 0.3;
+
+    // Front wall
+    const frontWall = new THREE.Mesh(
+      new THREE.BoxGeometry(caseOuterWidth, wallHeight, caseWallThickness),
+      caseMaterial
+    );
+    frontWall.position.set(0, -caseBaseHeight / 2 + 0.3 + wallHeight / 2, caseOuterHeight / 2 - caseWallThickness / 2);
+    frontWall.castShadow = true;
+    caseGroup.add(frontWall);
+
+    // Back wall
+    const backWall = new THREE.Mesh(
+      new THREE.BoxGeometry(caseOuterWidth, wallHeight, caseWallThickness),
+      caseMaterial
+    );
+    backWall.position.set(0, -caseBaseHeight / 2 + 0.3 + wallHeight / 2, -caseOuterHeight / 2 + caseWallThickness / 2);
+    backWall.castShadow = true;
+    caseGroup.add(backWall);
+
+    // Left wall
+    const leftWall = new THREE.Mesh(
+      new THREE.BoxGeometry(caseWallThickness, wallHeight, caseOuterHeight - caseWallThickness * 2),
+      caseMaterial
+    );
+    leftWall.position.set(-caseOuterWidth / 2 + caseWallThickness / 2, -caseBaseHeight / 2 + 0.3 + wallHeight / 2, 0);
+    leftWall.castShadow = true;
+    caseGroup.add(leftWall);
+
+    // Right wall
+    const rightWall = new THREE.Mesh(
+      new THREE.BoxGeometry(caseWallThickness, wallHeight, caseOuterHeight - caseWallThickness * 2),
+      caseMaterial
+    );
+    rightWall.position.set(caseOuterWidth / 2 - caseWallThickness / 2, -caseBaseHeight / 2 + 0.3 + wallHeight / 2, 0);
+    rightWall.castShadow = true;
+    caseGroup.add(rightWall);
+
+    scene.add(caseGroup);
+
+    // Create foam base (charcoal gray foam)
     const foamGeometry = new THREE.BoxGeometry(caseWidth, foamDepth, caseHeight);
     const foamMaterial = new THREE.MeshStandardMaterial({
-      color: 0x3a3a3a,
-      roughness: 0.9,
+      color: 0x404040,
+      roughness: 0.95,
       metalness: 0.0,
     });
     const foam = new THREE.Mesh(foamGeometry, foamMaterial);
-    foam.position.set(0, 0, 0);
+    foam.position.set(0, -caseBaseHeight / 2 + 0.3 + foamDepth / 2, 0);
     foam.receiveShadow = true;
     foam.castShadow = true;
     foam.userData.isFoam = true;
     scene.add(foam);
 
+    // Foam top Y position
+    const foamTopY = -caseBaseHeight / 2 + 0.3 + foamDepth;
+
     // Create cutouts for each item
     items.forEach((item) => {
-      // Create extruded shape from points
+      // Create shape from points
       const shape = new THREE.Shape();
 
       if (item.points.length > 0) {
-        // Use actual shape points
-        shape.moveTo(item.points[0][0] - item.width / 2, item.points[0][1] - item.height / 2);
+        shape.moveTo(item.points[0][0] - item.width / 2, -(item.points[0][1] - item.height / 2));
         for (let i = 1; i < item.points.length; i++) {
-          shape.lineTo(item.points[i][0] - item.width / 2, item.points[i][1] - item.height / 2);
+          shape.lineTo(item.points[i][0] - item.width / 2, -(item.points[i][1] - item.height / 2));
         }
         shape.closePath();
       } else {
@@ -183,71 +269,90 @@ export function Foam3DPreview({
         shape.closePath();
       }
 
+      // Create the cutout hole geometry
+      const cutoutDepth = Math.min(item.depth, foamDepth - 0.2);
       const extrudeSettings = {
-        depth: Math.min(item.depth, foamDepth - 0.1),
+        depth: cutoutDepth,
         bevelEnabled: false,
       };
 
       const cutoutGeometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+      cutoutGeometry.rotateX(-Math.PI / 2);
 
-      // Rotate to lay flat - extrude downward into foam (negative Y)
-      cutoutGeometry.rotateX(Math.PI / 2);
-
-      // Dark cutout material (shows depth)
-      const cutoutMaterial = new THREE.MeshStandardMaterial({
-        color: 0x0d0d0d,
-        roughness: 0.95,
+      // Dark interior material for the hole
+      const holeMaterial = new THREE.MeshStandardMaterial({
+        color: 0x1a1a1a,
+        roughness: 1.0,
         metalness: 0.0,
+        side: THREE.BackSide,
       });
 
-      const cutout = new THREE.Mesh(cutoutGeometry, cutoutMaterial);
+      const hole = new THREE.Mesh(cutoutGeometry, holeMaterial);
 
-      // Position: convert from case coordinates to 3D coordinates
-      // 2D: origin top-left, Y goes down
-      // 3D: origin center, Y goes up, Z goes toward viewer
+      // Position the cutout
       const xPos = item.x + item.width / 2 - caseWidth / 2;
-      // Flip Z so top of 2D layout is back of 3D view (natural perspective)
       const zPos = -(item.y + item.height / 2 - caseHeight / 2);
-      // Cutout starts at top surface of foam
-      const yPos = foamDepth / 2;
+      const yPos = foamTopY + 0.01;
 
-      cutout.position.set(xPos, yPos, zPos);
-      cutout.castShadow = true;
-      cutout.receiveShadow = true;
-      cutout.userData.isCutout = true;
-      cutout.userData.itemId = item.id;
-      scene.add(cutout);
+      hole.position.set(xPos, yPos, zPos);
+      hole.userData.isCutout = true;
+      hole.userData.itemId = item.id;
+      scene.add(hole);
 
-      // Add colored rim/edge to show item boundary
-      const rimGeometry = new THREE.EdgesGeometry(cutoutGeometry);
-      const rimMaterial = new THREE.LineBasicMaterial({
+      // Add inner walls of the cutout (visible sides)
+      const wallMaterial = new THREE.MeshStandardMaterial({
+        color: 0x2a2a2a,
+        roughness: 0.9,
+        metalness: 0.0,
+        side: THREE.DoubleSide,
+      });
+
+      const innerGeometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+      innerGeometry.rotateX(-Math.PI / 2);
+
+      const innerWalls = new THREE.Mesh(innerGeometry, wallMaterial);
+      innerWalls.position.set(xPos, yPos, zPos);
+      innerWalls.userData.isCutout = true;
+      scene.add(innerWalls);
+
+      // Add colored outline at the top edge
+      const outlineShape = new THREE.Shape();
+      if (item.points.length > 0) {
+        outlineShape.moveTo(item.points[0][0] - item.width / 2, -(item.points[0][1] - item.height / 2));
+        for (let i = 1; i < item.points.length; i++) {
+          outlineShape.lineTo(item.points[i][0] - item.width / 2, -(item.points[i][1] - item.height / 2));
+        }
+        outlineShape.closePath();
+      } else {
+        outlineShape.moveTo(-item.width / 2, -item.height / 2);
+        outlineShape.lineTo(item.width / 2, -item.height / 2);
+        outlineShape.lineTo(item.width / 2, item.height / 2);
+        outlineShape.lineTo(-item.width / 2, item.height / 2);
+        outlineShape.closePath();
+      }
+
+      const outlinePoints = outlineShape.getPoints(50);
+      const outlineGeometry = new THREE.BufferGeometry().setFromPoints(
+        outlinePoints.map(p => new THREE.Vector3(p.x, 0, -p.y))
+      );
+      const outlineMaterial = new THREE.LineBasicMaterial({
         color: item.color || 0xff4d00,
         linewidth: 2,
       });
-      const rim = new THREE.LineSegments(rimGeometry, rimMaterial);
-      rim.position.copy(cutout.position);
-      rim.userData.isCutout = true;
-      scene.add(rim);
+      const outline = new THREE.LineLoop(outlineGeometry, outlineMaterial);
+      outline.position.set(xPos, foamTopY + 0.02, zPos);
+      outline.userData.isCutout = true;
+      scene.add(outline);
     });
 
-    // Add case border visualization (orange outline)
-    const borderGeometry = new THREE.EdgesGeometry(
-      new THREE.BoxGeometry(caseWidth, foamDepth, caseHeight)
-    );
-    const borderMaterial = new THREE.LineBasicMaterial({ color: 0xff4d00 });
-    const border = new THREE.LineSegments(borderGeometry, borderMaterial);
-    border.position.set(0, 0, 0);
-    border.userData.isFoam = true;
-    scene.add(border);
-
-  }, [items, caseWidth, caseHeight, foamDepth, isInitialized]);
+  }, [items, caseWidth, caseHeight, foamDepth, caseWallThickness, caseBaseHeight, isInitialized]);
 
   // Update camera when case size changes
   useEffect(() => {
     if (!cameraRef.current || !controlsRef.current) return;
 
     const maxDim = Math.max(caseWidth, caseHeight, foamDepth);
-    cameraRef.current.position.set(maxDim * 0.8, maxDim * 1.5, maxDim * 1.2);
+    cameraRef.current.position.set(maxDim * 1.0, maxDim * 1.2, maxDim * 1.4);
     controlsRef.current.minDistance = maxDim * 0.5;
     controlsRef.current.maxDistance = maxDim * 4;
     controlsRef.current.update();
