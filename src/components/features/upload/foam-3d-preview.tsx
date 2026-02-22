@@ -299,21 +299,21 @@ export function Foam3DPreview({
       hole.userData.itemId = item.id;
       scene.add(hole);
 
-      // Add colored outline at the top edge - must match cutout geometry after rotation
-      // After rotateX(-Math.PI/2), shape's Y becomes +Z, so outline Z = +py
+      // Add colored outline at the top edge
+      // rotateX(-PI/2) transforms (x,y,z) -> (x,z,-y)
+      // Shape uses py = -(points[i][1] - height/2), so after rotation Z = -py = points[i][1] - height/2
       const outlinePoints: THREE.Vector3[] = [];
       if (item.points.length > 0) {
         for (let i = 0; i < item.points.length; i++) {
-          const px = item.points[i][0] - item.width / 2;
-          const py = -(item.points[i][1] - item.height / 2); // Same negation as shape
-          // After rotation: shape Y -> +Z
-          outlinePoints.push(new THREE.Vector3(px, 0, py));
+          const ox = item.points[i][0] - item.width / 2;
+          const oz = item.points[i][1] - item.height / 2; // Direct: matches -py after rotation
+          outlinePoints.push(new THREE.Vector3(ox, 0, oz));
         }
       } else {
-        outlinePoints.push(new THREE.Vector3(-item.width / 2, 0, item.height / 2));
-        outlinePoints.push(new THREE.Vector3(item.width / 2, 0, item.height / 2));
-        outlinePoints.push(new THREE.Vector3(item.width / 2, 0, -item.height / 2));
         outlinePoints.push(new THREE.Vector3(-item.width / 2, 0, -item.height / 2));
+        outlinePoints.push(new THREE.Vector3(item.width / 2, 0, -item.height / 2));
+        outlinePoints.push(new THREE.Vector3(item.width / 2, 0, item.height / 2));
+        outlinePoints.push(new THREE.Vector3(-item.width / 2, 0, item.height / 2));
       }
 
       const outlineGeometry = new THREE.BufferGeometry().setFromPoints(outlinePoints);
