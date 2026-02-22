@@ -269,7 +269,7 @@ export function Foam3DPreview({
         shape.closePath();
       }
 
-      // Create the cutout hole geometry
+      // Create the cutout as a recessed shape going DOWN into the foam
       const cutoutDepth = Math.min(item.depth, foamDepth - 0.2);
       const extrudeSettings = {
         depth: cutoutDepth,
@@ -277,43 +277,28 @@ export function Foam3DPreview({
       };
 
       const cutoutGeometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-      cutoutGeometry.rotateX(-Math.PI / 2);
+      // Rotate so extrusion goes DOWN (negative Y)
+      cutoutGeometry.rotateX(Math.PI / 2);
 
       // Dark interior material for the hole
       const holeMaterial = new THREE.MeshStandardMaterial({
         color: 0x1a1a1a,
         roughness: 1.0,
         metalness: 0.0,
-        side: THREE.BackSide,
       });
 
       const hole = new THREE.Mesh(cutoutGeometry, holeMaterial);
 
-      // Position the cutout
+      // Position the cutout at foam top, extruding downward
       const xPos = item.x + item.width / 2 - caseWidth / 2;
       const zPos = -(item.y + item.height / 2 - caseHeight / 2);
-      const yPos = foamTopY + 0.01;
+      const yPos = foamTopY + 0.01; // Start just above foam surface
 
       hole.position.set(xPos, yPos, zPos);
+      hole.receiveShadow = true;
       hole.userData.isCutout = true;
       hole.userData.itemId = item.id;
       scene.add(hole);
-
-      // Add inner walls of the cutout (visible sides)
-      const wallMaterial = new THREE.MeshStandardMaterial({
-        color: 0x2a2a2a,
-        roughness: 0.9,
-        metalness: 0.0,
-        side: THREE.DoubleSide,
-      });
-
-      const innerGeometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-      innerGeometry.rotateX(-Math.PI / 2);
-
-      const innerWalls = new THREE.Mesh(innerGeometry, wallMaterial);
-      innerWalls.position.set(xPos, yPos, zPos);
-      innerWalls.userData.isCutout = true;
-      scene.add(innerWalls);
 
       // Add colored outline at the top edge
       const outlineShape = new THREE.Shape();
