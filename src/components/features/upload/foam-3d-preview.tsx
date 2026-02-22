@@ -156,69 +156,189 @@ export function Foam3DPreview({
     });
     toRemove.forEach((obj) => scene.remove(obj));
 
-    // Case material (dark plastic)
+    // Pelican-style case materials
     const caseMaterial = new THREE.MeshStandardMaterial({
+      color: 0x2a2a2a,
+      roughness: 0.6,
+      metalness: 0.05,
+    });
+
+    const caseAccentMaterial = new THREE.MeshStandardMaterial({
       color: 0x1a1a1a,
       roughness: 0.4,
       metalness: 0.1,
     });
 
-    // Case outer dimensions
-    const caseOuterWidth = caseWidth + caseWallThickness * 2;
-    const caseOuterHeight = caseHeight + caseWallThickness * 2;
+    const latchMaterial = new THREE.MeshStandardMaterial({
+      color: 0x3a3a3a,
+      roughness: 0.3,
+      metalness: 0.4,
+    });
 
-    // Create case bottom (tray shape)
+    // Case outer dimensions with thicker walls for Pelican style
+    const pelicanWall = 0.5;
+    const caseOuterWidth = caseWidth + pelicanWall * 2;
+    const caseOuterHeight = caseHeight + pelicanWall * 2;
+    const lidThickness = 0.8;
+    const lidOpenAngle = Math.PI * 0.55; // ~100 degrees open
+
+    // Create case bottom (tray)
     const caseGroup = new THREE.Group();
     caseGroup.userData.isCase = true;
 
-    // Case bottom
-    const bottomGeometry = new THREE.BoxGeometry(caseOuterWidth, 0.3, caseOuterHeight);
+    // Case bottom shell
+    const bottomThickness = 0.4;
+    const bottomGeometry = new THREE.BoxGeometry(caseOuterWidth, bottomThickness, caseOuterHeight);
     const bottom = new THREE.Mesh(bottomGeometry, caseMaterial);
-    bottom.position.set(0, -caseBaseHeight / 2 + 0.15, 0);
+    bottom.position.set(0, -caseBaseHeight / 2 + bottomThickness / 2, 0);
     bottom.castShadow = true;
     bottom.receiveShadow = true;
     caseGroup.add(bottom);
 
-    // Case walls
-    const wallHeight = caseBaseHeight - 0.3;
+    // Case walls (slightly tapered look)
+    const wallHeight = caseBaseHeight - bottomThickness;
 
     // Front wall
     const frontWall = new THREE.Mesh(
-      new THREE.BoxGeometry(caseOuterWidth, wallHeight, caseWallThickness),
+      new THREE.BoxGeometry(caseOuterWidth, wallHeight, pelicanWall),
       caseMaterial
     );
-    frontWall.position.set(0, -caseBaseHeight / 2 + 0.3 + wallHeight / 2, caseOuterHeight / 2 - caseWallThickness / 2);
+    frontWall.position.set(0, -caseBaseHeight / 2 + bottomThickness + wallHeight / 2, caseOuterHeight / 2 - pelicanWall / 2);
     frontWall.castShadow = true;
     caseGroup.add(frontWall);
 
     // Back wall
     const backWall = new THREE.Mesh(
-      new THREE.BoxGeometry(caseOuterWidth, wallHeight, caseWallThickness),
+      new THREE.BoxGeometry(caseOuterWidth, wallHeight, pelicanWall),
       caseMaterial
     );
-    backWall.position.set(0, -caseBaseHeight / 2 + 0.3 + wallHeight / 2, -caseOuterHeight / 2 + caseWallThickness / 2);
+    backWall.position.set(0, -caseBaseHeight / 2 + bottomThickness + wallHeight / 2, -caseOuterHeight / 2 + pelicanWall / 2);
     backWall.castShadow = true;
     caseGroup.add(backWall);
 
     // Left wall
     const leftWall = new THREE.Mesh(
-      new THREE.BoxGeometry(caseWallThickness, wallHeight, caseOuterHeight - caseWallThickness * 2),
+      new THREE.BoxGeometry(pelicanWall, wallHeight, caseOuterHeight - pelicanWall * 2),
       caseMaterial
     );
-    leftWall.position.set(-caseOuterWidth / 2 + caseWallThickness / 2, -caseBaseHeight / 2 + 0.3 + wallHeight / 2, 0);
+    leftWall.position.set(-caseOuterWidth / 2 + pelicanWall / 2, -caseBaseHeight / 2 + bottomThickness + wallHeight / 2, 0);
     leftWall.castShadow = true;
     caseGroup.add(leftWall);
 
     // Right wall
     const rightWall = new THREE.Mesh(
-      new THREE.BoxGeometry(caseWallThickness, wallHeight, caseOuterHeight - caseWallThickness * 2),
+      new THREE.BoxGeometry(pelicanWall, wallHeight, caseOuterHeight - pelicanWall * 2),
       caseMaterial
     );
-    rightWall.position.set(caseOuterWidth / 2 - caseWallThickness / 2, -caseBaseHeight / 2 + 0.3 + wallHeight / 2, 0);
+    rightWall.position.set(caseOuterWidth / 2 - pelicanWall / 2, -caseBaseHeight / 2 + bottomThickness + wallHeight / 2, 0);
     rightWall.castShadow = true;
     caseGroup.add(rightWall);
 
+    // Add rim/lip around top of case
+    const rimHeight = 0.15;
+    const rimWidth = 0.2;
+
+    // Front rim
+    const frontRim = new THREE.Mesh(
+      new THREE.BoxGeometry(caseOuterWidth + rimWidth * 2, rimHeight, rimWidth),
+      caseAccentMaterial
+    );
+    frontRim.position.set(0, -caseBaseHeight / 2 + bottomThickness + wallHeight + rimHeight / 2, caseOuterHeight / 2 + rimWidth / 2);
+    caseGroup.add(frontRim);
+
+    // Back rim
+    const backRim = new THREE.Mesh(
+      new THREE.BoxGeometry(caseOuterWidth + rimWidth * 2, rimHeight, rimWidth),
+      caseAccentMaterial
+    );
+    backRim.position.set(0, -caseBaseHeight / 2 + bottomThickness + wallHeight + rimHeight / 2, -caseOuterHeight / 2 - rimWidth / 2);
+    caseGroup.add(backRim);
+
+    // Left rim
+    const leftRim = new THREE.Mesh(
+      new THREE.BoxGeometry(rimWidth, rimHeight, caseOuterHeight),
+      caseAccentMaterial
+    );
+    leftRim.position.set(-caseOuterWidth / 2 - rimWidth / 2, -caseBaseHeight / 2 + bottomThickness + wallHeight + rimHeight / 2, 0);
+    caseGroup.add(leftRim);
+
+    // Right rim
+    const rightRim = new THREE.Mesh(
+      new THREE.BoxGeometry(rimWidth, rimHeight, caseOuterHeight),
+      caseAccentMaterial
+    );
+    rightRim.position.set(caseOuterWidth / 2 + rimWidth / 2, -caseBaseHeight / 2 + bottomThickness + wallHeight + rimHeight / 2, 0);
+    caseGroup.add(rightRim);
+
+    // Add latches on the front
+    const latchWidth = 1.2;
+    const latchHeight = 0.3;
+    const latchDepth = 0.25;
+    const numLatches = Math.max(2, Math.floor(caseOuterWidth / 12));
+    const latchSpacing = caseOuterWidth / (numLatches + 1);
+
+    for (let i = 0; i < numLatches; i++) {
+      const latchX = -caseOuterWidth / 2 + latchSpacing * (i + 1);
+      const latch = new THREE.Mesh(
+        new THREE.BoxGeometry(latchWidth, latchHeight, latchDepth),
+        latchMaterial
+      );
+      latch.position.set(latchX, -caseBaseHeight / 2 + bottomThickness + wallHeight / 2, caseOuterHeight / 2 + pelicanWall / 2 + latchDepth / 2);
+      latch.castShadow = true;
+      caseGroup.add(latch);
+    }
+
     scene.add(caseGroup);
+
+    // Create the LID (opened, hinged at the back)
+    const lidGroup = new THREE.Group();
+    lidGroup.userData.isCase = true;
+
+    // Lid main body
+    const lidBody = new THREE.Mesh(
+      new THREE.BoxGeometry(caseOuterWidth, lidThickness, caseOuterHeight),
+      caseMaterial
+    );
+    lidBody.position.set(0, lidThickness / 2, caseOuterHeight / 2);
+    lidBody.castShadow = true;
+    lidBody.receiveShadow = true;
+    lidGroup.add(lidBody);
+
+    // Lid rim (inner edge that sits inside the case)
+    const lidRimDepth = 0.3;
+    const lidRimHeight = 0.4;
+
+    // Front lid rim
+    const lidFrontRim = new THREE.Mesh(
+      new THREE.BoxGeometry(caseOuterWidth - pelicanWall * 2, lidRimHeight, lidRimDepth),
+      caseAccentMaterial
+    );
+    lidFrontRim.position.set(0, -lidRimHeight / 2, caseOuterHeight - lidRimDepth / 2);
+    lidGroup.add(lidFrontRim);
+
+    // Left lid rim
+    const lidLeftRim = new THREE.Mesh(
+      new THREE.BoxGeometry(lidRimDepth, lidRimHeight, caseOuterHeight - lidRimDepth * 2),
+      caseAccentMaterial
+    );
+    lidLeftRim.position.set(-caseOuterWidth / 2 + pelicanWall + lidRimDepth / 2, -lidRimHeight / 2, caseOuterHeight / 2);
+    lidGroup.add(lidLeftRim);
+
+    // Right lid rim
+    const lidRightRim = new THREE.Mesh(
+      new THREE.BoxGeometry(lidRimDepth, lidRimHeight, caseOuterHeight - lidRimDepth * 2),
+      caseAccentMaterial
+    );
+    lidRightRim.position.set(caseOuterWidth / 2 - pelicanWall - lidRimDepth / 2, -lidRimHeight / 2, caseOuterHeight / 2);
+    lidGroup.add(lidRightRim);
+
+    // Position lid group at hinge point (back edge of case, top)
+    const hingeY = -caseBaseHeight / 2 + bottomThickness + wallHeight + rimHeight;
+    const hingeZ = -caseOuterHeight / 2 - rimWidth;
+    lidGroup.position.set(0, hingeY, hingeZ);
+    lidGroup.rotation.x = -lidOpenAngle;
+
+    scene.add(lidGroup);
 
     // Create foam base (charcoal gray foam)
     const foamGeometry = new THREE.BoxGeometry(caseWidth, foamDepth, caseHeight);
