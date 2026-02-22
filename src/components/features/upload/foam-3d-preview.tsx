@@ -52,10 +52,11 @@ export function Foam3DPreview({
     scene.background = new THREE.Color(0x1a1a1a);
     sceneRef.current = scene;
 
-    // Camera
+    // Camera - positioned above and in front, looking down at the foam
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
     const maxDim = Math.max(caseWidth, caseHeight, foamDepth);
-    camera.position.set(maxDim * 1.5, maxDim * 1.2, maxDim * 1.5);
+    // Position: front-right, above, looking down at foam on table
+    camera.position.set(maxDim * 0.8, maxDim * 1.5, maxDim * 1.2);
     camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
@@ -189,8 +190,8 @@ export function Foam3DPreview({
 
       const cutoutGeometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
 
-      // Rotate to lay flat and face up
-      cutoutGeometry.rotateX(-Math.PI / 2);
+      // Rotate to lay flat - extrude downward into foam (negative Y)
+      cutoutGeometry.rotateX(Math.PI / 2);
 
       // Dark cutout material (shows depth)
       const cutoutMaterial = new THREE.MeshStandardMaterial({
@@ -202,10 +203,13 @@ export function Foam3DPreview({
       const cutout = new THREE.Mesh(cutoutGeometry, cutoutMaterial);
 
       // Position: convert from case coordinates to 3D coordinates
-      // Case origin is top-left, 3D origin is center
+      // 2D: origin top-left, Y goes down
+      // 3D: origin center, Y goes up, Z goes toward viewer
       const xPos = item.x + item.width / 2 - caseWidth / 2;
-      const zPos = item.y + item.height / 2 - caseHeight / 2;
-      const yPos = foamDepth / 2 - item.depth + 0.01; // Slightly above bottom to show depth
+      // Flip Z so top of 2D layout is back of 3D view (natural perspective)
+      const zPos = -(item.y + item.height / 2 - caseHeight / 2);
+      // Cutout starts at top surface of foam
+      const yPos = foamDepth / 2;
 
       cutout.position.set(xPos, yPos, zPos);
       cutout.castShadow = true;
@@ -243,7 +247,7 @@ export function Foam3DPreview({
     if (!cameraRef.current || !controlsRef.current) return;
 
     const maxDim = Math.max(caseWidth, caseHeight, foamDepth);
-    cameraRef.current.position.set(maxDim * 1.5, maxDim * 1.2, maxDim * 1.5);
+    cameraRef.current.position.set(maxDim * 0.8, maxDim * 1.5, maxDim * 1.2);
     controlsRef.current.minDistance = maxDim * 0.5;
     controlsRef.current.maxDistance = maxDim * 4;
     controlsRef.current.update();
