@@ -46,7 +46,7 @@ export function StepSegment({
   // Hybrid approach state
   const [cleanedImageData, setCleanedImageData] = useState<ImageData | null>(null);
   const [margin, setMargin] = useState(5);        // Pixels of padding around objects
-  const [gapFill, setGapFill] = useState(28);     // Bridge over gaps/concavities
+  const [gapFill, setGapFill] = useState(14);     // Bridge over gaps/concavities
   const [smoothing, setSmoothing] = useState(1);  // Contour smoothing level
 
   // AI scanning animation state
