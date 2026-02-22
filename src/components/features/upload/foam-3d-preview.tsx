@@ -251,21 +251,28 @@ export function Foam3DPreview({
 
     // Create cutouts for each item
     items.forEach((item) => {
-      // Create shape from points
+      // Create shape from points (in local XY plane, centered on item)
+      // Negate Y so after rotation it matches the negated zPos
       const shape = new THREE.Shape();
 
       if (item.points.length > 0) {
-        shape.moveTo(item.points[0][0] - item.width / 2, -(item.points[0][1] - item.height / 2));
+        // Points are relative to item origin, center them and negate Y
+        const px = item.points[0][0] - item.width / 2;
+        const py = -(item.points[0][1] - item.height / 2);
+        shape.moveTo(px, py);
         for (let i = 1; i < item.points.length; i++) {
-          shape.lineTo(item.points[i][0] - item.width / 2, -(item.points[i][1] - item.height / 2));
+          shape.lineTo(
+            item.points[i][0] - item.width / 2,
+            -(item.points[i][1] - item.height / 2)
+          );
         }
         shape.closePath();
       } else {
-        // Fallback to rectangle
-        shape.moveTo(-item.width / 2, -item.height / 2);
-        shape.lineTo(item.width / 2, -item.height / 2);
+        // Fallback to rectangle (Y negated)
+        shape.moveTo(-item.width / 2, item.height / 2);
         shape.lineTo(item.width / 2, item.height / 2);
-        shape.lineTo(-item.width / 2, item.height / 2);
+        shape.lineTo(item.width / 2, -item.height / 2);
+        shape.lineTo(-item.width / 2, -item.height / 2);
         shape.closePath();
       }
 
@@ -277,8 +284,11 @@ export function Foam3DPreview({
       };
 
       const cutoutGeometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-      // Rotate so extrusion goes DOWN (negative Y)
-      cutoutGeometry.rotateX(Math.PI / 2);
+      // Rotate so shape lies flat (XZ plane) with extrusion going DOWN (-Y)
+      // rotateX(Math.PI/2) maps: X→X, Y→-Z, Z→Y
+      // We want the shape (originally XY) to be in XZ, so rotateX(-Math.PI/2)
+      // maps: X→X, Y→Z, Z→-Y (extrusion goes down)
+      cutoutGeometry.rotateX(-Math.PI / 2);
 
       // Dark interior material for the hole
       const holeMaterial = new THREE.MeshStandardMaterial({
@@ -289,10 +299,11 @@ export function Foam3DPreview({
 
       const hole = new THREE.Mesh(cutoutGeometry, holeMaterial);
 
-      // Position the cutout at foam top, extruding downward
+      // Position the cutout at foam top
       const xPos = item.x + item.width / 2 - caseWidth / 2;
       const zPos = -(item.y + item.height / 2 - caseHeight / 2);
-      const yPos = foamTopY + 0.01; // Start just above foam surface
+      // Position at top of foam, extrusion goes down from here
+      const yPos = foamTopY - cutoutDepth + 0.01;
 
       hole.position.set(xPos, yPos, zPos);
       hole.receiveShadow = true;
@@ -300,26 +311,23 @@ export function Foam3DPreview({
       hole.userData.itemId = item.id;
       scene.add(hole);
 
-      // Add colored outline at the top edge
-      const outlineShape = new THREE.Shape();
+      // Add colored outline at the top edge - use same points as cutout
+      const outlinePoints: THREE.Vector3[] = [];
       if (item.points.length > 0) {
-        outlineShape.moveTo(item.points[0][0] - item.width / 2, -(item.points[0][1] - item.height / 2));
-        for (let i = 1; i < item.points.length; i++) {
-          outlineShape.lineTo(item.points[i][0] - item.width / 2, -(item.points[i][1] - item.height / 2));
+        for (let i = 0; i < item.points.length; i++) {
+          const px = item.points[i][0] - item.width / 2;
+          const py = item.points[i][1] - item.height / 2;
+          // Map to 3D: X stays, Y becomes -Z (to match the zPos negation)
+          outlinePoints.push(new THREE.Vector3(px, 0, -py));
         }
-        outlineShape.closePath();
       } else {
-        outlineShape.moveTo(-item.width / 2, -item.height / 2);
-        outlineShape.lineTo(item.width / 2, -item.height / 2);
-        outlineShape.lineTo(item.width / 2, item.height / 2);
-        outlineShape.lineTo(-item.width / 2, item.height / 2);
-        outlineShape.closePath();
+        outlinePoints.push(new THREE.Vector3(-item.width / 2, 0, item.height / 2));
+        outlinePoints.push(new THREE.Vector3(item.width / 2, 0, item.height / 2));
+        outlinePoints.push(new THREE.Vector3(item.width / 2, 0, -item.height / 2));
+        outlinePoints.push(new THREE.Vector3(-item.width / 2, 0, -item.height / 2));
       }
 
-      const outlinePoints = outlineShape.getPoints(50);
-      const outlineGeometry = new THREE.BufferGeometry().setFromPoints(
-        outlinePoints.map(p => new THREE.Vector3(p.x, 0, -p.y))
-      );
+      const outlineGeometry = new THREE.BufferGeometry().setFromPoints(outlinePoints);
       const outlineMaterial = new THREE.LineBasicMaterial({
         color: item.color || 0xff4d00,
         linewidth: 2,
