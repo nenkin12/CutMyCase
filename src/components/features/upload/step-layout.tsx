@@ -17,7 +17,7 @@ interface SegmentedItem {
 interface LayoutItem {
   id: string;
   name: string;
-  points: number[][]; // In inches, relative to item origin (smoothed, with finger pull)
+  points: number[][]; // In inches, relative to item origin (smoothed)
   rawPoints: number[][]; // Original points before processing
   color: string;
   x: number; // Position in inches
@@ -26,7 +26,6 @@ interface LayoutItem {
   width: number; // Bounding box in inches
   height: number;
   depth: number; // Cutout depth in inches
-  fingerPullIndex: number; // Index where finger pull is added
   // Source image crop info (in pixels)
   sourceX: number;
   sourceY: number;
@@ -118,128 +117,6 @@ function perpendicularDistance(point: number[], lineStart: number[], lineEnd: nu
   const projY = lineStart[1] + t * dy;
 
   return Math.sqrt(Math.pow(point[0] - projX, 2) + Math.pow(point[1] - projY, 2));
-}
-
-// Add a semicircle finger pull tab to the shape
-// Simple approach: find a segment on the target edge and add the semicircle there
-function addFingerPull(
-  points: number[][],
-  width: number,
-  height: number,
-  pullWidth: number,
-  pullDepth: number,
-  position: "bottom" | "top" | "left" | "right"
-): { points: number[][], insertIndex: number } {
-  if (points.length < 4) return { points, insertIndex: 0 };
-
-  const radius = pullWidth / 2;
-
-  // Find the segment on the target edge
-  // We look for consecutive points that are both on the target edge
-  const edgeTolerance = Math.max(width, height) * 0.1;
-  const centerTarget = position === "bottom" || position === "top" ? width / 2 : height / 2;
-
-  let bestSegmentIdx = -1;
-  let bestSegmentDist = Infinity;
-
-  for (let i = 0; i < points.length; i++) {
-    const p1 = points[i];
-    const p2 = points[(i + 1) % points.length];
-
-    // Check if this segment is on the target edge
-    let onEdge = false;
-    let segmentCenter = 0;
-
-    if (position === "bottom" && Math.abs(p1[1] - height) < edgeTolerance && Math.abs(p2[1] - height) < edgeTolerance) {
-      onEdge = true;
-      segmentCenter = (p1[0] + p2[0]) / 2;
-    } else if (position === "top" && Math.abs(p1[1]) < edgeTolerance && Math.abs(p2[1]) < edgeTolerance) {
-      onEdge = true;
-      segmentCenter = (p1[0] + p2[0]) / 2;
-    } else if (position === "right" && Math.abs(p1[0] - width) < edgeTolerance && Math.abs(p2[0] - width) < edgeTolerance) {
-      onEdge = true;
-      segmentCenter = (p1[1] + p2[1]) / 2;
-    } else if (position === "left" && Math.abs(p1[0]) < edgeTolerance && Math.abs(p2[0]) < edgeTolerance) {
-      onEdge = true;
-      segmentCenter = (p1[1] + p2[1]) / 2;
-    }
-
-    if (onEdge) {
-      const dist = Math.abs(segmentCenter - centerTarget);
-      if (dist < bestSegmentDist) {
-        bestSegmentDist = dist;
-        bestSegmentIdx = i;
-      }
-    }
-  }
-
-  // If no segment found on edge, find the point closest to edge center
-  if (bestSegmentIdx === -1) {
-    let targetX = position === "bottom" || position === "top" ? width / 2 : (position === "right" ? width : 0);
-    let targetY = position === "left" || position === "right" ? height / 2 : (position === "bottom" ? height : 0);
-
-    let bestDist = Infinity;
-    for (let i = 0; i < points.length; i++) {
-      const p = points[i];
-      const dist = Math.sqrt(Math.pow(p[0] - targetX, 2) + Math.pow(p[1] - targetY, 2));
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestSegmentIdx = i;
-      }
-    }
-  }
-
-  if (bestSegmentIdx === -1) return { points, insertIndex: 0 };
-
-  // Get the segment points
-  const segP1 = points[bestSegmentIdx];
-  const segP2 = points[(bestSegmentIdx + 1) % points.length];
-
-  // Calculate where to place the semicircle along this segment
-  // We'll replace this segment with: start -> semicircle -> end
-  const segMidX = (segP1[0] + segP2[0]) / 2;
-  const segMidY = (segP1[1] + segP2[1]) / 2;
-
-  // Generate the semicircle
-  const numArcPoints = 12;
-  const arcPoints: number[][] = [];
-
-  // Start point (connects to previous contour)
-  arcPoints.push([segP1[0], segP1[1]]);
-
-  // Arc points
-  for (let i = 1; i < numArcPoints; i++) {
-    const t = i / numArcPoints;
-    const angle = Math.PI * t;
-
-    let x: number, y: number;
-    if (position === "bottom") {
-      x = segP1[0] + (segP2[0] - segP1[0]) * t;
-      y = segMidY + radius * Math.sin(angle);
-    } else if (position === "top") {
-      x = segP1[0] + (segP2[0] - segP1[0]) * t;
-      y = segMidY - radius * Math.sin(angle);
-    } else if (position === "right") {
-      x = segMidX + radius * Math.sin(angle);
-      y = segP1[1] + (segP2[1] - segP1[1]) * t;
-    } else {
-      x = segMidX - radius * Math.sin(angle);
-      y = segP1[1] + (segP2[1] - segP1[1]) * t;
-    }
-    arcPoints.push([x, y]);
-  }
-
-  // End point (connects to next contour)
-  arcPoints.push([segP2[0], segP2[1]]);
-
-  // Build new contour: replace the segment with the arc
-  const newPoints = [
-    ...points.slice(0, bestSegmentIdx),
-    ...arcPoints,
-    ...points.slice(bestSegmentIdx + 2) // Skip the two segment points we're replacing
-  ];
-
-  return { points: newPoints, insertIndex: bestSegmentIdx };
 }
 
 interface CaseSize {
@@ -528,9 +405,6 @@ export function StepLayout({
 
   // Processing settings
   const [smoothingLevel, setSmoothingLevel] = useState(2); // 0-5 (2 = gentle smoothing, good default)
-  const [fingerPullWidth, setFingerPullWidth] = useState(1.25); // inches
-  const [fingerPullDepth, setFingerPullDepth] = useState(0.75); // inches
-  const [fingerPullEnabled, setFingerPullEnabled] = useState(false); // Off by default until working correctly
   const [showProcessingPanel, setShowProcessingPanel] = useState(false);
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [sourceImage, setSourceImage] = useState<HTMLImageElement | null>(null);
@@ -590,27 +464,13 @@ export function StepLayout({
     setZoom(Math.max(0.2, autoZoom)); // Lower minimum zoom on mobile (0.2 instead of 0.25)
   }, [currentCase, selectedCase, customWidth, customHeight]);
 
-  // Process points with smoothing and finger pulls
+  // Process points with smoothing
   const processPoints = useCallback((
-    rawPoints: number[][],
-    width: number,
-    height: number
-  ): { points: number[][], fingerPullIndex: number } => {
+    rawPoints: number[][]
+  ): number[][] => {
     // Apply smoothing
-    let processed = smoothPoints(rawPoints, smoothingLevel);
-
-    // Add finger pull
-    let fingerPullIndex = 0;
-    if (fingerPullEnabled && fingerPullWidth > 0 && fingerPullDepth > 0) {
-      // Choose position based on item aspect ratio
-      const position = width > height ? "bottom" : "right";
-      const result = addFingerPull(processed, width, height, fingerPullWidth, fingerPullDepth, position);
-      processed = result.points;
-      fingerPullIndex = result.insertIndex;
-    }
-
-    return { points: processed, fingerPullIndex };
-  }, [smoothingLevel, fingerPullEnabled, fingerPullWidth, fingerPullDepth]);
+    return smoothPoints(rawPoints, smoothingLevel);
+  }, [smoothingLevel]);
 
   // Convert segmented items to layout items
   useEffect(() => {
@@ -649,8 +509,8 @@ export function StepLayout({
           p[1] - minY
         ]);
 
-        // Apply smoothing and finger pull
-        const { points: processedPoints, fingerPullIndex } = processPoints(rawPoints, width, height);
+        // Apply smoothing
+        const processedPoints = processPoints(rawPoints);
 
         // Initial position: spread items out (starting from safe zone)
         const col = index % 3;
@@ -668,7 +528,6 @@ export function StepLayout({
           width,
           height,
           depth: item.depth ?? 1.5, // Default to 1.5" if not specified
-          fingerPullIndex,
           sourceX: sourceMinX,
           sourceY: sourceMinY,
           sourceWidth: sourceMaxX - sourceMinX,
@@ -1043,11 +902,7 @@ export function StepLayout({
     ]);
 
     // Apply smoothing
-    const { points: processedPoints, fingerPullIndex } = processPoints(
-      normalizedPoints,
-      preset.widthInches,
-      preset.heightInches
-    );
+    const processedPoints = processPoints(normalizedPoints);
 
     // Create a new layout item
     const newId = `preset_${preset.id}_${Date.now()}`;
@@ -1063,7 +918,6 @@ export function StepLayout({
       width: preset.widthInches,
       height: preset.heightInches,
       depth: preset.depthInches,
-      fingerPullIndex,
       sourceX: 0,
       sourceY: 0,
       sourceWidth: 0,
@@ -1421,58 +1275,6 @@ export function StepLayout({
                   </div>
                 </div>
 
-                {/* Finger Pull Toggle */}
-                <div className="flex items-center justify-between">
-                  <label className="text-sm">Finger Pulls</label>
-                  <button
-                    onClick={() => setFingerPullEnabled(!fingerPullEnabled)}
-                    className={cn(
-                      "w-12 h-6 rounded-full transition-colors relative",
-                      fingerPullEnabled ? "bg-accent" : "bg-dark"
-                    )}
-                  >
-                    <div className={cn(
-                      "w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform",
-                      fingerPullEnabled ? "translate-x-6" : "translate-x-0.5"
-                    )} />
-                  </button>
-                </div>
-
-                {fingerPullEnabled && (
-                  <>
-                    {/* Finger Pull Width */}
-                    <div>
-                      <label className="text-xs text-text-muted block mb-2">
-                        Pull Width: {fingerPullWidth.toFixed(1)}"
-                      </label>
-                      <input
-                        type="range"
-                        min="0.5"
-                        max="2"
-                        step="0.1"
-                        value={fingerPullWidth}
-                        onChange={(e) => setFingerPullWidth(parseFloat(e.target.value))}
-                        className="w-full accent-accent"
-                      />
-                    </div>
-
-                    {/* Finger Pull Depth */}
-                    <div>
-                      <label className="text-xs text-text-muted block mb-2">
-                        Pull Depth: {fingerPullDepth.toFixed(1)}"
-                      </label>
-                      <input
-                        type="range"
-                        min="0.25"
-                        max="1"
-                        step="0.05"
-                        value={fingerPullDepth}
-                        onChange={(e) => setFingerPullDepth(parseFloat(e.target.value))}
-                        className="w-full accent-accent"
-                      />
-                    </div>
-                  </>
-                )}
               </div>
             )}
           </div>

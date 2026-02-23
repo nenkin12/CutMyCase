@@ -295,7 +295,7 @@ export default function FirearmsPage() {
                   step: "2",
                   title: "Arrange Your Layout",
                   description:
-                    "Drag items into your case. Set custom depths for items with optics or accessories. Add finger pulls for easy removal.",
+                    "Drag items into your case. Set custom depths for items with optics or accessories.",
                 },
                 {
                   step: "3",
