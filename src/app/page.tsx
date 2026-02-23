@@ -4,7 +4,7 @@ import { ArrowRight, Check, Star, Phone, Play, Shield, Target, Zap } from "lucid
 import { Button } from "@/components/ui/button";
 import { UserMenu } from "@/components/layout/user-menu";
 
-// Hero illustration - tactical case with firearm cutouts (based on reference image)
+// Hero illustration - DJI Phantom style drone kit case
 function HeroIllustration() {
   return (
     <svg
@@ -29,14 +29,6 @@ function HeroIllustration() {
             <feMergeNode in="SourceGraphic" />
           </feMerge>
         </filter>
-        <filter id="innerShadow">
-          <feOffset dx="0" dy="2" />
-          <feGaussianBlur stdDeviation="3" result="offset-blur" />
-          <feComposite operator="out" in="SourceGraphic" in2="offset-blur" result="inverse" />
-          <feFlood floodColor="black" floodOpacity="0.5" result="color" />
-          <feComposite operator="in" in="color" in2="inverse" result="shadow" />
-          <feComposite operator="over" in="shadow" in2="SourceGraphic" />
-        </filter>
       </defs>
 
       {/* Grid pattern */}
@@ -45,54 +37,107 @@ function HeroIllustration() {
       </pattern>
       <rect width="800" height="600" fill="url(#grid)" />
 
-      {/* Case outline - Pelican style */}
+      {/* Case outline */}
       <rect x="80" y="80" width="640" height="440" rx="12" fill="#1a1a1a" stroke="#333" strokeWidth="3" />
 
       {/* Case lip/edge */}
       <rect x="90" y="90" width="620" height="420" rx="8" fill="url(#foamGrad)" />
 
-      {/* Foam interior - charcoal foam texture */}
+      {/* Foam interior */}
       <rect x="100" y="100" width="600" height="400" rx="4" fill="#0d0d0d" />
 
-      {/* Ear Protection Cutout (left side) - large rounded rectangle */}
-      <rect x="120" y="140" width="180" height="160" rx="20" fill="url(#foamGrad)" stroke="url(#cutGrad)" strokeWidth="2" filter="url(#glow)" />
-      {/* Red liner inside ear protection area */}
-      <rect x="130" y="150" width="160" height="140" rx="15" fill="none" stroke="#8B0000" strokeWidth="1" opacity="0.5" />
-
-      {/* Magazine slots - 2 rows of 5 */}
-      <g>
-        {[0, 1, 2, 3, 4].map((i) => (
-          <rect key={`mag-top-${i}`} x={320 + i * 45} y={140} width="35" height="70" rx="4" fill="url(#foamGrad)" stroke="url(#cutGrad)" strokeWidth="1.5" filter="url(#glow)" />
-        ))}
-        {[0, 1, 2, 3, 4].map((i) => (
-          <rect key={`mag-bot-${i}`} x={320 + i * 45} y={220} width="35" height="70" rx="4" fill="url(#foamGrad)" stroke="url(#cutGrad)" strokeWidth="1.5" filter="url(#glow)" />
-        ))}
+      {/* Battery slot - top left */}
+      <g filter="url(#glow)">
+        <rect x="115" y="115" width="70" height="45" rx="6" fill="url(#foamGrad)" stroke="url(#cutGrad)" strokeWidth="2" />
       </g>
 
-      {/* Pistol cutout (right side) - with optic mount */}
+      {/* Battery slot - top right */}
       <g filter="url(#glow)">
-        {/* Main pistol body */}
+        <rect x="115" y="170" width="70" height="45" rx="6" fill="url(#foamGrad)" stroke="url(#cutGrad)" strokeWidth="2" />
+      </g>
+
+      {/* Drone cutout - silhouette with curved propeller blades */}
+      <g filter="url(#glow)">
         <path
-          d="M580 320 L680 320 L680 360 L700 360 L700 420 L680 420 L680 440 L620 440 L620 420 L580 420 L580 460 L540 460 L540 420 L520 420 L520 360 L540 360 L540 340 L580 340 Z"
+          d="
+            M400 240
+            L380 240 L380 260 L340 260
+            C320 260, 300 250, 285 235
+            L260 210
+            C250 200, 235 195, 220 200
+            C195 208, 175 195, 175 175
+            C175 155, 195 142, 220 150
+            C235 155, 250 150, 260 140
+            L285 115
+            C300 100, 320 90, 340 90
+            L380 90 L380 110 L420 110 L420 90
+            L460 90
+            C480 90, 500 100, 515 115
+            L540 140
+            C550 150, 565 155, 580 150
+            C605 142, 625 155, 625 175
+            C625 195, 605 208, 580 200
+            C565 195, 550 200, 540 210
+            L515 235
+            C500 250, 480 260, 460 260
+            L420 260 L420 240
+            Z
+            M380 290
+            L380 310 L340 310
+            C320 310, 300 320, 285 335
+            L260 360
+            C250 370, 235 375, 220 370
+            C195 362, 175 375, 175 395
+            C175 415, 195 428, 220 420
+            C235 415, 250 420, 260 430
+            L285 455
+            C300 470, 320 480, 340 480
+            L380 480 L380 460 L420 460 L420 480
+            L460 480
+            C480 480, 500 470, 515 455
+            L540 430
+            C550 420, 565 415, 580 420
+            C605 428, 625 415, 625 395
+            C625 375, 605 362, 580 370
+            C565 375, 550 370, 540 360
+            L515 335
+            C500 320, 480 310, 460 310
+            L420 310 L420 290
+            L380 290
+            Z
+          "
           fill="url(#foamGrad)"
           stroke="url(#cutGrad)"
-          strokeWidth="2"
+          strokeWidth="2.5"
         />
-        {/* Optic mount cutout */}
-        <rect x="600" y="300" width="60" height="25" rx="4" fill="url(#foamGrad)" stroke="url(#cutGrad)" strokeWidth="1.5" />
+        {/* Center body rectangle */}
+        <rect x="360" y="240" width="80" height="90" rx="8" fill="url(#foamGrad)" stroke="url(#cutGrad)" strokeWidth="2" />
       </g>
 
-      {/* Suppressor cutout (bottom right) */}
-      <rect x="520" y="480" width="160" height="35" rx="17" fill="url(#foamGrad)" stroke="url(#cutGrad)" strokeWidth="2" filter="url(#glow)" />
+      {/* Controller (right side) */}
+      <g filter="url(#glow)">
+        <rect x="600" y="130" width="85" height="150" rx="10" fill="url(#foamGrad)" stroke="url(#cutGrad)" strokeWidth="2" />
+        {/* Joystick cutouts */}
+        <circle cx="625" cy="170" r="12" fill="none" stroke="url(#cutGrad)" strokeWidth="1.5" opacity="0.6" />
+        <circle cx="660" cy="220" r="12" fill="none" stroke="url(#cutGrad)" strokeWidth="1.5" opacity="0.6" />
+        {/* Screen area */}
+        <rect x="612" y="245" width="60" height="25" rx="3" fill="none" stroke="url(#cutGrad)" strokeWidth="1" opacity="0.4" />
+      </g>
 
-      {/* Accessory slot (bottom left) */}
-      <rect x="120" y="340" width="160" height="100" rx="8" fill="url(#foamGrad)" stroke="url(#cutGrad)" strokeWidth="2" filter="url(#glow)" />
+      {/* Charger slot (bottom left) */}
+      <g filter="url(#glow)">
+        <rect x="115" y="380" width="70" height="90" rx="6" fill="url(#foamGrad)" stroke="url(#cutGrad)" strokeWidth="2" />
+      </g>
 
-      {/* Small tool slots */}
-      <rect x="300" y="340" width="80" height="50" rx="4" fill="url(#foamGrad)" stroke="url(#cutGrad)" strokeWidth="1.5" filter="url(#glow)" />
-      <rect x="300" y="400" width="80" height="50" rx="4" fill="url(#foamGrad)" stroke="url(#cutGrad)" strokeWidth="1.5" filter="url(#glow)" />
+      {/* Propeller slots (right side, bottom) */}
+      <g filter="url(#glow)">
+        <rect x="600" y="310" width="40" height="75" rx="4" fill="url(#foamGrad)" stroke="url(#cutGrad)" strokeWidth="1.5" />
+        <rect x="645" y="310" width="40" height="75" rx="4" fill="url(#foamGrad)" stroke="url(#cutGrad)" strokeWidth="1.5" />
+        <rect x="600" y="395" width="40" height="75" rx="4" fill="url(#foamGrad)" stroke="url(#cutGrad)" strokeWidth="1.5" />
+        <rect x="645" y="395" width="40" height="75" rx="4" fill="url(#foamGrad)" stroke="url(#cutGrad)" strokeWidth="1.5" />
+      </g>
 
-      {/* Corner marks - targeting style */}
+      {/* Corner marks */}
       <g stroke="#FF4D00" strokeWidth="2" opacity="0.8">
         <path d="M 80 80 L 80 120 M 80 80 L 120 80" />
         <path d="M 720 80 L 720 120 M 720 80 L 680 80" />
@@ -102,15 +147,15 @@ function HeroIllustration() {
 
       {/* Measurement indicator */}
       <g opacity="0.6">
-        <line x1="120" y1="550" x2="300" y2="550" stroke="#FF4D00" strokeWidth="1" />
-        <line x1="120" y1="545" x2="120" y2="555" stroke="#FF4D00" strokeWidth="1" />
-        <line x1="300" y1="545" x2="300" y2="555" stroke="#FF4D00" strokeWidth="1" />
-        <text x="210" y="570" fill="#FF4D00" fontSize="11" textAnchor="middle" fontFamily="monospace">180mm</text>
+        <line x1="175" y1="550" x2="625" y2="550" stroke="#FF4D00" strokeWidth="1" />
+        <line x1="175" y1="545" x2="175" y2="555" stroke="#FF4D00" strokeWidth="1" />
+        <line x1="625" y1="545" x2="625" y2="555" stroke="#FF4D00" strokeWidth="1" />
+        <text x="400" y="570" fill="#FF4D00" fontSize="11" textAnchor="middle" fontFamily="monospace">450mm</text>
       </g>
 
       {/* Laser cutting indicator */}
-      <line x1="80" y1="130" x2="720" y2="130" stroke="url(#cutGrad)" strokeWidth="1" opacity="0.3" strokeDasharray="4 4" />
-      <circle cx="400" cy="130" r="4" fill="#FF4D00" filter="url(#glow)" />
+      <line x1="80" y1="105" x2="720" y2="105" stroke="url(#cutGrad)" strokeWidth="1" opacity="0.3" strokeDasharray="4 4" />
+      <circle cx="400" cy="105" r="4" fill="#FF4D00" filter="url(#glow)" />
     </svg>
   );
 }
