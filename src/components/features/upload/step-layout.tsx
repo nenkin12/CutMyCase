@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ArrowLeft, RotateCw, Trash2, ZoomIn, ZoomOut, Copy, Plus, Minus, Settings2, Image as ImageIcon, ImageOff, Package, Search, X, Box, Layers } from "lucide-react";
+import { ArrowLeft, RotateCw, RotateCcw, Trash2, ZoomIn, ZoomOut, Copy, Plus, Minus, Settings2, Image as ImageIcon, ImageOff, Package, Search, X, Box, Layers, FlipVertical2, Combine, Square, Circle, PlusCircle } from "lucide-react";
 import { Foam3DPreview } from "./foam-3d-preview";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -31,6 +31,12 @@ interface LayoutItem {
   sourceY: number;
   sourceWidth: number;
   sourceHeight: number;
+  // Side orientation tracking
+  isOnSide?: boolean; // True when flipped on side
+  originalPoints?: number[][]; // Original top-down shape points
+  originalWidth?: number;
+  originalHeight?: number;
+  originalDepth?: number;
 }
 
 // Calculate angle at a point (in degrees)
@@ -45,48 +51,41 @@ function angleAtPoint(prev: number[], curr: number[], next: number[]): number {
   return Math.acos(cosAngle) * (180 / Math.PI);
 }
 
-// Gentle shape refinement for CNC-ready output
-// Cleans up minor noise while preserving the true shape and details
+// Shape refinement for CNC-ready output
+// Smooths corners and edges while preserving the overall shape
 function refineShape(points: number[][], width: number, height: number): number[][] {
   if (points.length < 4) return points;
 
   const size = Math.min(width, height);
 
-  // Step 1: Very gentle noise removal - only remove tiny jitter
-  // Use small tolerance to preserve details
-  const simplifyTolerance = Math.max(0.008, size * 0.008);
+  // Step 1: Reduce noise with Douglas-Peucker simplification
+  const simplifyTolerance = Math.max(0.015, size * 0.012);
   let refined = simplifyPath(points, simplifyTolerance);
 
-  // Step 2: Only straighten edges that are VERY close to straight
-  // Look at each edge (between consecutive points) and snap if nearly straight
-  const result: number[][] = [];
-
+  // Step 2: Apply Chaikin smoothing (1 pass) to smooth corners and edges
+  // This creates natural-looking curves at corners while keeping straight edges clean
+  const smoothed: number[][] = [];
   for (let i = 0; i < refined.length; i++) {
-    const curr = refined[i];
-    const next = refined[(i + 1) % refined.length];
+    const p0 = refined[i];
+    const p1 = refined[(i + 1) % refined.length];
 
-    result.push([...curr]);
-
-    // Check if this segment is nearly horizontal or vertical (within 3 degrees)
-    const dx = next[0] - curr[0];
-    const dy = next[1] - curr[1];
-    const segLength = Math.sqrt(dx * dx + dy * dy);
-
-    if (segLength > 0.1) { // Only for meaningful segments
-      const angle = Math.atan2(Math.abs(dy), Math.abs(dx)) * (180 / Math.PI);
-
-      // Very strict - only snap if within 3 degrees of h/v
-      if (angle < 3) {
-        // Nearly horizontal - snap next point's Y to current
-        refined[(i + 1) % refined.length][1] = curr[1];
-      } else if (angle > 87) {
-        // Nearly vertical - snap next point's X to current
-        refined[(i + 1) % refined.length][0] = curr[0];
-      }
-    }
+    // Chaikin: create points at 25% and 75% along each edge
+    smoothed.push([
+      0.75 * p0[0] + 0.25 * p1[0],
+      0.75 * p0[1] + 0.25 * p1[1]
+    ]);
+    smoothed.push([
+      0.25 * p0[0] + 0.75 * p1[0],
+      0.25 * p0[1] + 0.75 * p1[1]
+    ]);
   }
 
-  return refined;
+  // Step 3: Final simplification to keep reasonable point count
+  if (smoothed.length > 150) {
+    return simplifyPath(smoothed, 0.008);
+  }
+
+  return smoothed;
 }
 
 // Detect if shape is a near-perfect rectangle and enforce it
@@ -141,21 +140,13 @@ function enforceRectangle(points: number[][], edgeTolerance: number = 0.08): num
 }
 
 // Main intelligent processing function
+// Only applies very gentle noise removal - preserves original shape details
 function intelligentProcess(points: number[][], width: number, height: number): number[][] {
   if (points.length < 3) return points;
 
-  // Step 1: Check if it's a near-perfect rectangle (very strict)
-  let result = enforceRectangle(points, 0.08);
-
-  // If it was converted to a rectangle, we're done
-  if (result.length === 4) {
-    return result;
-  }
-
-  // Step 2: Gentle shape refinement - clean up minor noise while preserving details
-  result = refineShape(points, width, height);
-
-  return result;
+  // Only apply gentle refinement - no rectangle enforcement
+  // This preserves rounded corners, curves, and original shape details
+  return refineShape(points, width, height);
 }
 
 // Gentle smoothing - simplify the contour while preserving shape
@@ -455,6 +446,153 @@ function PresetPickerModal({
   );
 }
 
+// Add Shape Modal
+function AddShapeModal({
+  onAdd,
+  onClose,
+}: {
+  onAdd: (shapeType: "rectangle" | "circle", width: number, height: number, depth: number, name: string) => void;
+  onClose: () => void;
+}) {
+  const [shapeType, setShapeType] = useState<"rectangle" | "circle">("rectangle");
+  const [width, setWidth] = useState("2");
+  const [height, setHeight] = useState("2");
+  const [depth, setDepth] = useState("1.5");
+  const [name, setName] = useState("");
+
+  const handleAdd = () => {
+    const w = parseFloat(width) || 2;
+    const h = parseFloat(height) || 2;
+    const d = parseFloat(depth) || 1.5;
+    onAdd(shapeType, w, h, d, name);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+      <div className="bg-card border border-border rounded-lg max-w-md w-full overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <h2 className="text-xl font-heading flex items-center gap-2">
+            <PlusCircle className="w-5 h-5 text-accent" />
+            Add Custom Shape
+          </h2>
+          <button onClick={onClose} className="text-text-muted hover:text-white">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-4">
+          {/* Shape Type */}
+          <div>
+            <label className="text-sm text-text-muted block mb-2">Shape Type</label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShapeType("rectangle")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-2 p-3 rounded border-2 transition-colors",
+                  shapeType === "rectangle"
+                    ? "border-accent bg-accent/20"
+                    : "border-border hover:border-accent/50"
+                )}
+              >
+                <Square className="w-5 h-5" />
+                <span>Rectangle</span>
+              </button>
+              <button
+                onClick={() => setShapeType("circle")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-2 p-3 rounded border-2 transition-colors",
+                  shapeType === "circle"
+                    ? "border-accent bg-accent/20"
+                    : "border-border hover:border-accent/50"
+                )}
+              >
+                <Circle className="w-5 h-5" />
+                <span>Circle/Oval</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Name */}
+          <div>
+            <label className="text-sm text-text-muted block mb-1">Name (optional)</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={shapeType === "circle" ? "Circle" : "Rectangle"}
+              className="w-full bg-dark border border-border rounded px-3 py-2 text-white text-sm"
+            />
+          </div>
+
+          {/* Dimensions */}
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-sm text-text-muted block mb-1">Width (in)</label>
+              <input
+                type="number"
+                value={width}
+                onChange={(e) => setWidth(e.target.value)}
+                min="0.5"
+                max="50"
+                step="0.1"
+                className="w-full bg-dark border border-border rounded px-3 py-2 text-white text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-sm text-text-muted block mb-1">Height (in)</label>
+              <input
+                type="number"
+                value={height}
+                onChange={(e) => setHeight(e.target.value)}
+                min="0.5"
+                max="50"
+                step="0.1"
+                className="w-full bg-dark border border-border rounded px-3 py-2 text-white text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-sm text-text-muted block mb-1">Depth (in)</label>
+              <input
+                type="number"
+                value={depth}
+                onChange={(e) => setDepth(e.target.value)}
+                min="0.5"
+                max="10"
+                step="0.1"
+                className="w-full bg-dark border border-border rounded px-3 py-2 text-white text-sm"
+              />
+            </div>
+          </div>
+
+          {/* Preview */}
+          <div className="bg-carbon rounded p-4 flex items-center justify-center">
+            <div
+              className={cn(
+                "border-2 border-accent bg-accent/20",
+                shapeType === "circle" ? "rounded-full" : "rounded"
+              )}
+              style={{
+                width: `${Math.min(parseFloat(width) || 2, 8) * 20}px`,
+                height: `${Math.min(parseFloat(height) || 2, 8) * 20}px`,
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 p-4 border-t border-border">
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={handleAdd}>
+            <Plus className="w-4 h-4 mr-1" />
+            Add Shape
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const CASE_SIZES: CaseSize[] = [
   {
     id: "pelican-1535",
@@ -518,7 +656,9 @@ export function StepLayout({
 
   const [selectedCase, setSelectedCase] = useState<string>("pelican-1615");
   const [layoutItems, setLayoutItems] = useState<LayoutItem[]>([]);
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  // Helper for single-item operations (first selected item)
+  const selectedItemId = selectedItemIds.length > 0 ? selectedItemIds[0] : null;
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -536,6 +676,7 @@ export function StepLayout({
   const [sourceImage, setSourceImage] = useState<HTMLImageElement | null>(null);
   const [showPresetPicker, setShowPresetPicker] = useState(false);
   const [show3DPreview, setShow3DPreview] = useState(false);
+  const [showAddShapeModal, setShowAddShapeModal] = useState(false);
 
   // Load source image for preview
   useEffect(() => {
@@ -793,7 +934,7 @@ export function StepLayout({
       }
 
       // Fill with image preview or solid color
-      const isSelected = item.id === selectedItemId;
+      const isSelected = selectedItemIds.includes(item.id);
 
       if (showImagePreview && sourceImage) {
         // Clip to shape and draw source image
@@ -868,7 +1009,7 @@ export function StepLayout({
       canvas.width / 2,
       canvas.height - 10
     );
-  }, [layoutItems, currentCase, selectedItemId, zoom, showImagePreview, sourceImage]);
+  }, [layoutItems, currentCase, selectedItemIds, zoom, showImagePreview, sourceImage]);
 
   useEffect(() => {
     draw();
@@ -888,18 +1029,32 @@ export function StepLayout({
       const item = layoutItems[i];
       if (x >= item.x && x <= item.x + item.width &&
           y >= item.y && y <= item.y + item.height) {
-        setSelectedItemId(item.id);
+
+        if (e.shiftKey) {
+          // Multi-select: toggle item in selection
+          setSelectedItemIds(prev =>
+            prev.includes(item.id)
+              ? prev.filter(id => id !== item.id)
+              : [...prev, item.id]
+          );
+        } else {
+          // Single select
+          setSelectedItemIds([item.id]);
+        }
+
         setIsDragging(true);
         setDragOffset({ x: x - item.x, y: y - item.y });
         return;
       }
     }
 
-    setSelectedItemId(null);
+    // Clicked on empty space - deselect all
+    setSelectedItemIds([]);
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDragging || !selectedItemId) return;
+    if (!isDragging || selectedItemIds.length === 0) return;
+    const selectedItemId = selectedItemIds[selectedItemIds.length - 1]; // Move the last selected item
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -925,6 +1080,7 @@ export function StepLayout({
     setIsDragging(false);
   };
 
+  // Rotate 90 degrees clockwise
   const rotateSelected = () => {
     if (!selectedItemId) return;
 
@@ -974,10 +1130,124 @@ export function StepLayout({
     }));
   };
 
-  const deleteSelected = () => {
+  // Rotate 90 degrees counter-clockwise
+  const rotateSelectedCCW = () => {
     if (!selectedItemId) return;
-    setLayoutItems(prev => prev.filter(item => item.id !== selectedItemId));
-    setSelectedItemId(null);
+
+    setLayoutItems(prev => prev.map(item => {
+      if (item.id === selectedItemId) {
+        const oldWidth = item.width;
+        const oldHeight = item.height;
+
+        const centerX = item.x + oldWidth / 2;
+        const centerY = item.y + oldHeight / 2;
+
+        // For a 90° counter-clockwise rotation: new_x = oldHeight - y, new_y = x
+        const rotatedPoints = item.points.map(p => [
+          oldHeight - p[1],        // new x = oldHeight - old y
+          p[0]                     // new y = old x
+        ]);
+
+        const rotatedRawPoints = item.rawPoints.map(p => [
+          oldHeight - p[1],
+          p[0]
+        ]);
+
+        const newWidth = oldHeight;
+        const newHeight = oldWidth;
+
+        const newX = centerX - newWidth / 2;
+        const newY = centerY - newHeight / 2;
+
+        return {
+          ...item,
+          rotation: 0,
+          x: newX,
+          y: newY,
+          width: newWidth,
+          height: newHeight,
+          points: rotatedPoints,
+          rawPoints: rotatedRawPoints,
+          sourceWidth: item.sourceHeight,
+          sourceHeight: item.sourceWidth,
+        };
+      }
+      return item;
+    }));
+  };
+
+  // Flip item on its side - toggles between top-down view and side view
+  // Side view shows a simple rectangle profile
+  const flipOnSide = () => {
+    if (!selectedItemId) return;
+
+    setLayoutItems(prev => prev.map(item => {
+      if (item.id === selectedItemId) {
+        const centerX = item.x + item.width / 2;
+        const centerY = item.y + item.height / 2;
+
+        if (item.isOnSide) {
+          // Flip back to normal (top-down) view - restore original shape
+          const origWidth = item.originalWidth ?? item.width;
+          const origHeight = item.originalHeight ?? item.height;
+          const origDepth = item.originalDepth ?? item.depth;
+          const origPoints = item.originalPoints ?? item.points;
+
+          const newX = centerX - origWidth / 2;
+          const newY = centerY - origHeight / 2;
+
+          return {
+            ...item,
+            x: newX,
+            y: newY,
+            width: origWidth,
+            height: origHeight,
+            depth: origDepth,
+            points: origPoints,
+            rawPoints: origPoints,
+            isOnSide: false,
+          };
+        } else {
+          // Flip to side view - save original and create rectangle
+          const newHeight = item.depth;
+          const newDepth = item.height;
+
+          // Create simple rectangle points (side profile is flat/rectangular)
+          const rectPoints = [
+            [0, 0],
+            [item.width, 0],
+            [item.width, newHeight],
+            [0, newHeight]
+          ];
+
+          const newX = centerX - item.width / 2;
+          const newY = centerY - newHeight / 2;
+
+          return {
+            ...item,
+            x: newX,
+            y: newY,
+            height: newHeight,
+            depth: newDepth,
+            points: rectPoints,
+            rawPoints: rectPoints,
+            isOnSide: true,
+            // Store original values for restoration
+            originalPoints: item.originalPoints ?? item.points,
+            originalWidth: item.originalWidth ?? item.width,
+            originalHeight: item.originalHeight ?? item.height,
+            originalDepth: item.originalDepth ?? item.depth,
+          };
+        }
+      }
+      return item;
+    }));
+  };
+
+  const deleteSelected = () => {
+    if (selectedItemIds.length === 0) return;
+    setLayoutItems(prev => prev.filter(item => !selectedItemIds.includes(item.id)));
+    setSelectedItemIds([]);
   };
 
   const duplicateSelected = () => {
@@ -999,7 +1269,120 @@ export function StepLayout({
     };
 
     setLayoutItems(prev => [...prev, newItem]);
-    setSelectedItemId(newId); // Select the new item
+    setSelectedItemIds([newId]); // Select the new item
+  };
+
+  // Combine multiple selected items into one cutout
+  const combineSelected = () => {
+    if (selectedItemIds.length < 2) return;
+
+    const selectedItems = layoutItems.filter(item => selectedItemIds.includes(item.id));
+    if (selectedItems.length < 2) return;
+
+    // Calculate bounding box of all selected items
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let maxDepth = 0;
+
+    selectedItems.forEach(item => {
+      minX = Math.min(minX, item.x);
+      minY = Math.min(minY, item.y);
+      maxX = Math.max(maxX, item.x + item.width);
+      maxY = Math.max(maxY, item.y + item.height);
+      maxDepth = Math.max(maxDepth, item.depth);
+    });
+
+    const combinedWidth = maxX - minX;
+    const combinedHeight = maxY - minY;
+
+    // Create rectangle points for the combined shape
+    const combinedPoints = [
+      [0, 0],
+      [combinedWidth, 0],
+      [combinedWidth, combinedHeight],
+      [0, combinedHeight]
+    ];
+
+    // Create new combined item
+    const newId = `combined_${Date.now()}`;
+    const combinedItem: LayoutItem = {
+      id: newId,
+      name: `Combined (${selectedItems.length} items)`,
+      points: combinedPoints,
+      rawPoints: combinedPoints,
+      color: selectedItems[0].color,
+      x: minX,
+      y: minY,
+      rotation: 0,
+      width: combinedWidth,
+      height: combinedHeight,
+      depth: maxDepth,
+      sourceX: 0,
+      sourceY: 0,
+      sourceWidth: 0,
+      sourceHeight: 0,
+    };
+
+    // Remove selected items and add combined item
+    setLayoutItems(prev => [
+      ...prev.filter(item => !selectedItemIds.includes(item.id)),
+      combinedItem
+    ]);
+    setSelectedItemIds([newId]);
+  };
+
+  // Add a custom shape to the layout
+  const addCustomShape = (
+    shapeType: "rectangle" | "circle",
+    width: number,
+    height: number,
+    depth: number,
+    name: string
+  ) => {
+    let points: number[][];
+
+    if (shapeType === "circle") {
+      // Create circle/oval points
+      const segments = 32;
+      points = [];
+      for (let i = 0; i < segments; i++) {
+        const angle = (i / segments) * Math.PI * 2;
+        points.push([
+          (width / 2) + (width / 2) * Math.cos(angle),
+          (height / 2) + (height / 2) * Math.sin(angle)
+        ]);
+      }
+    } else {
+      // Rectangle points
+      points = [
+        [0, 0],
+        [width, 0],
+        [width, height],
+        [0, height]
+      ];
+    }
+
+    const newId = `shape_${Date.now()}`;
+    const newItem: LayoutItem = {
+      id: newId,
+      name: name || (shapeType === "circle" ? "Circle" : "Rectangle"),
+      points,
+      rawPoints: points,
+      color: "#22c55e", // Green for custom shapes
+      x: BORDER_MARGIN + 0.5,
+      y: BORDER_MARGIN + 0.5,
+      rotation: 0,
+      width,
+      height,
+      depth,
+      sourceX: 0,
+      sourceY: 0,
+      sourceWidth: 0,
+      sourceHeight: 0,
+    };
+
+    setLayoutItems(prev => [...prev, newItem]);
+    setSelectedItemIds([newId]);
+    setShowAddShapeModal(false);
   };
 
   const addMultipleCopies = (count: number) => {
@@ -1060,7 +1443,7 @@ export function StepLayout({
     };
 
     setLayoutItems(prev => [...prev, newItem]);
-    setSelectedItemId(newId);
+    setSelectedItemIds([newId]);
   }, [processPoints]);
 
   const autoArrange = () => {
@@ -1311,32 +1694,69 @@ export function StepLayout({
                   <span className="sm:hidden">Arrange</span>
                 </Button>
 
-                {/* Item Actions (only when item selected) */}
-                {selectedItemId && (
+                {/* Item Actions (only when item(s) selected) */}
+                {selectedItemIds.length > 0 && (
                   <div className="flex items-center gap-1 pl-1 sm:pl-2 border-l border-border">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={rotateSelected}
-                      title="Rotate 90°"
-                      className="p-1.5 sm:p-2"
-                    >
-                      <RotateCw className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={duplicateSelected}
-                      title="Duplicate"
-                      className="p-1.5 sm:p-2"
-                    >
-                      <Copy className="w-4 h-4" />
-                    </Button>
+                    {/* Single item actions */}
+                    {selectedItemIds.length === 1 && (
+                      <>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={rotateSelected}
+                          title="Rotate clockwise"
+                          className="p-1.5 sm:p-2"
+                        >
+                          <RotateCw className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={rotateSelectedCCW}
+                          title="Rotate counter-clockwise"
+                          className="p-1.5 sm:p-2"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={flipOnSide}
+                          title="Flip on side (swap height/depth)"
+                          className="p-1.5 sm:p-2"
+                        >
+                          <FlipVertical2 className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={duplicateSelected}
+                          title="Duplicate"
+                          className="p-1.5 sm:p-2"
+                        >
+                          <Copy className="w-4 h-4" />
+                        </Button>
+                      </>
+                    )}
+                    {/* Multi-select actions */}
+                    {selectedItemIds.length > 1 && (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={combineSelected}
+                        title="Combine selected items into one cutout"
+                        className="p-1.5 sm:p-2"
+                      >
+                        <Combine className="w-4 h-4 mr-1" />
+                        <span className="text-xs">Combine ({selectedItemIds.length})</span>
+                      </Button>
+                    )}
+                    {/* Delete works for single or multi */}
                     <Button
                       variant="secondary"
                       size="sm"
                       onClick={deleteSelected}
-                      title="Remove"
+                      title="Remove selected"
                       className="hover:bg-error/20 hover:text-error p-1.5 sm:p-2"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -1536,82 +1956,105 @@ export function StepLayout({
             )}
           </div>
 
-          {/* Items List */}
-          <div className="bg-carbon rounded-[4px] p-3 sm:p-4">
-            <div className="flex items-center justify-between mb-2 sm:mb-3">
-              <h3 className="font-heading text-xs sm:text-sm">
-                Items ({layoutItems.length})
-              </h3>
-              <button
-                onClick={() => setShowPresetPicker(true)}
-                className="flex items-center gap-1 text-xs text-accent hover:text-accent/80 transition-colors"
-              >
-                <Package className="w-3 h-3" />
-                Add Preset
-              </button>
-            </div>
-            <div className="space-y-1.5 sm:space-y-2 max-h-32 sm:max-h-48 overflow-y-auto">
-              {layoutItems.map(item => (
-                <div
-                  key={item.id}
-                  className={cn(
-                    "flex items-center gap-2 p-2 rounded-[4px] transition-colors",
-                    selectedItemId === item.id
-                      ? "bg-accent/20"
-                      : "hover:bg-dark"
-                  )}
-                >
-                  <button
-                    onClick={() => setSelectedItemId(item.id)}
-                    className="flex items-center gap-2 flex-1 text-left"
-                  >
-                    <div
-                      className="w-3 h-3 rounded"
-                      style={{ backgroundColor: item.color }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <span className="text-sm truncate block">{item.name}</span>
-                      <span className="text-[10px] text-text-muted">
-                        {item.width.toFixed(1)}" × {item.height.toFixed(1)}" × {item.depth.toFixed(1)}" deep
-                      </span>
-                    </div>
-                  </button>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // Duplicate this specific item
-                        const newId = `${item.id}_copy_${Date.now()}`;
-                        const newItem: LayoutItem = {
-                          ...item,
-                          id: newId,
-                          x: item.x + 0.5,
-                          y: item.y + 0.5,
-                        };
-                        setLayoutItems(prev => [...prev, newItem]);
-                      }}
-                      className="w-6 h-6 flex items-center justify-center rounded bg-dark hover:bg-accent/30 text-text-muted hover:text-white"
-                      title="Add copy"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setLayoutItems(prev => prev.filter(i => i.id !== item.id));
-                        if (selectedItemId === item.id) setSelectedItemId(null);
-                      }}
-                      className="w-6 h-6 flex items-center justify-center rounded bg-dark hover:bg-error/30 text-text-muted hover:text-error"
-                      title="Remove"
-                    >
-                      <Minus className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+        </div>
+      </div>
+
+      {/* Items List - Full width below canvas */}
+      <div className="bg-carbon rounded-[4px] p-3 sm:p-4 mt-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-heading text-sm">
+            Items ({layoutItems.length})
+          </h3>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowAddShapeModal(true)}
+              className="flex items-center gap-1 text-xs text-green-500 hover:text-green-400 transition-colors"
+            >
+              <PlusCircle className="w-3 h-3" />
+              Add Shape
+            </button>
+            <button
+              onClick={() => setShowPresetPicker(true)}
+              className="flex items-center gap-1 text-xs text-accent hover:text-accent/80 transition-colors"
+            >
+              <Package className="w-3 h-3" />
+              Add Preset
+            </button>
           </div>
         </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+          {layoutItems.map(item => (
+            <div
+              key={item.id}
+              className={cn(
+                "flex flex-col p-2 rounded-[4px] transition-colors cursor-pointer",
+                selectedItemIds.includes(item.id)
+                  ? "bg-accent/20 ring-1 ring-accent"
+                  : "bg-dark hover:bg-dark/80"
+              )}
+              onClick={(e) => {
+                if (e.shiftKey) {
+                  setSelectedItemIds(prev =>
+                    prev.includes(item.id)
+                      ? prev.filter(id => id !== item.id)
+                      : [...prev, item.id]
+                  );
+                } else {
+                  setSelectedItemIds([item.id]);
+                }
+              }}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <div
+                  className="w-3 h-3 rounded flex-shrink-0"
+                  style={{ backgroundColor: item.color }}
+                />
+                <span className="text-sm truncate flex-1">{item.name}</span>
+              </div>
+              <div className="text-[10px] text-text-muted">
+                {item.width.toFixed(1)}" × {item.height.toFixed(1)}" × {item.depth.toFixed(1)}"
+              </div>
+              <div className="flex items-center gap-1 mt-2">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const newId = `${item.id}_copy_${Date.now()}`;
+                    const newItem: LayoutItem = {
+                      ...item,
+                      id: newId,
+                      x: item.x + 0.5,
+                      y: item.y + 0.5,
+                    };
+                    setLayoutItems(prev => [...prev, newItem]);
+                  }}
+                  className="flex-1 h-6 flex items-center justify-center rounded bg-carbon hover:bg-accent/30 text-text-muted hover:text-white text-xs"
+                  title="Duplicate"
+                >
+                  <Copy className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setLayoutItems(prev => prev.filter(i => i.id !== item.id));
+                    setSelectedItemIds(prev => prev.filter(id => id !== item.id));
+                  }}
+                  className="flex-1 h-6 flex items-center justify-center rounded bg-carbon hover:bg-error/30 text-text-muted hover:text-error text-xs"
+                  title="Remove"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          ))}
+          {layoutItems.length === 0 && (
+            <div className="col-span-full text-center py-4 text-text-muted text-sm">
+              No items yet. Add a shape or preset to get started.
+            </div>
+          )}
+        </div>
+        <p className="text-xs text-text-muted mt-3">
+          Tip: Hold Shift and click to select multiple items, then combine them
+        </p>
       </div>
 
       <div className="flex justify-between">
@@ -1632,6 +2075,13 @@ export function StepLayout({
         <PresetPickerModal
           onSelect={addPresetToLayout}
           onClose={() => setShowPresetPicker(false)}
+        />
+      )}
+
+      {showAddShapeModal && (
+        <AddShapeModal
+          onAdd={addCustomShape}
+          onClose={() => setShowAddShapeModal(false)}
         />
       )}
     </div>

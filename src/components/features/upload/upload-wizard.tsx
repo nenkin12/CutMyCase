@@ -199,6 +199,18 @@ export function UploadWizard() {
                     step: "segment",
                   });
                 }}
+                onSkipToLayout={() => {
+                  trackStepComplete("upload", { skipped: true });
+                  updateState({
+                    uploadId: null,
+                    imageUrl: null,
+                    imageWidth: null,
+                    imageHeight: null,
+                    segmentedItems: [],
+                    pixelsPerInch: 100, // Default PPI for manual builds
+                    step: "layout",
+                  });
+                }}
               />
             )}
 
@@ -243,13 +255,13 @@ export function UploadWizard() {
               />
             )}
 
-            {state.step === "layout" && state.pixelsPerInch && state.imageUrl && (
+            {state.step === "layout" && state.pixelsPerInch && (
               <StepLayout
                 segmentedItems={state.segmentedItems}
                 pixelsPerInch={state.pixelsPerInch}
-                imageWidth={state.imageWidth!}
-                imageHeight={state.imageHeight!}
-                imageUrl={state.imageUrl}
+                imageWidth={state.imageWidth || 1000}
+                imageHeight={state.imageHeight || 1000}
+                imageUrl={state.imageUrl || ""}
                 onComplete={(layoutItems, caseId, caseName, caseWidth, caseHeight, fingerPullEnabled) => {
                   trackStepComplete("layout", { caseId, caseName });
                   updateState({
@@ -262,7 +274,7 @@ export function UploadWizard() {
                     step: "checkout",
                   });
                 }}
-                onBack={() => goToStep("calibrate")}
+                onBack={() => goToStep(state.imageUrl ? "calibrate" : "upload")}
               />
             )}
 

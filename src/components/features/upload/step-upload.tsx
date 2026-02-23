@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
-import { Upload, Image as ImageIcon, X, Cpu, Sparkles, RotateCw, AlertCircle, CheckCircle } from "lucide-react";
+import { Upload, Image as ImageIcon, X, Cpu, Sparkles, RotateCw, AlertCircle, CheckCircle, PlusCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -13,6 +13,7 @@ interface StepUploadProps {
     width: number;
     height: number;
   }) => void;
+  onSkipToLayout?: () => void;
 }
 
 const UPLOAD_PHASES = [
@@ -86,7 +87,7 @@ async function resizeImage(file: File, rotation: number = 0): Promise<{ blob: Bl
   });
 }
 
-export function StepUpload({ onComplete }: StepUploadProps) {
+export function StepUpload({ onComplete, onSkipToLayout }: StepUploadProps) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -292,23 +293,46 @@ export function StepUpload({ onComplete }: StepUploadProps) {
       )}
 
       {!preview ? (
-        <div
-          {...getRootProps()}
-          className={cn(
-            "border-2 border-dashed rounded-[4px] p-8 sm:p-12 text-center cursor-pointer transition-colors",
-            isDragActive
-              ? "border-accent bg-accent/10"
-              : "border-border hover:border-accent/50"
+        <div className="space-y-4">
+          <div
+            {...getRootProps()}
+            className={cn(
+              "border-2 border-dashed rounded-[4px] p-8 sm:p-12 text-center cursor-pointer transition-colors",
+              isDragActive
+                ? "border-accent bg-accent/10"
+                : "border-border hover:border-accent/50"
+            )}
+          >
+            <input {...getInputProps()} />
+            <Upload className="w-12 h-12 sm:w-16 sm:h-16 text-accent mx-auto mb-4" />
+            <p className="text-base sm:text-lg mb-2">
+              {isDragActive ? "Drop your image here" : "Tap to upload or drag & drop"}
+            </p>
+            <p className="text-text-muted text-xs sm:text-sm">
+              PNG, JPG, WEBP up to 20MB
+            </p>
+          </div>
+
+          {/* Start from Scratch Option */}
+          {onSkipToLayout && (
+            <div className="text-center">
+              <div className="flex items-center gap-4 my-4">
+                <div className="flex-1 h-px bg-border" />
+                <span className="text-text-muted text-sm">or</span>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+              <button
+                onClick={onSkipToLayout}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-carbon border border-border rounded-[4px] text-text-secondary hover:text-white hover:border-accent/50 transition-colors"
+              >
+                <PlusCircle className="w-5 h-5" />
+                <span>Start from Scratch</span>
+              </button>
+              <p className="text-text-muted text-xs mt-2">
+                Build your layout using shapes and presets without scanning
+              </p>
+            </div>
           )}
-        >
-          <input {...getInputProps()} />
-          <Upload className="w-12 h-12 sm:w-16 sm:h-16 text-accent mx-auto mb-4" />
-          <p className="text-base sm:text-lg mb-2">
-            {isDragActive ? "Drop your image here" : "Tap to upload or drag & drop"}
-          </p>
-          <p className="text-text-muted text-xs sm:text-sm">
-            PNG, JPG, WEBP up to 20MB
-          </p>
         </div>
       ) : (
         <div className="space-y-4">

@@ -45,14 +45,14 @@ export function StepSegment({
 
   // Hybrid approach state
   const [cleanedImageData, setCleanedImageData] = useState<ImageData | null>(null);
-  const [margin, setMargin] = useState(5);        // Pixels of padding around objects
-  const [gapFill, setGapFill] = useState(14);     // Bridge over gaps/concavities
-  const [smoothing, setSmoothing] = useState(1);  // Contour smoothing level
+  const [margin, setMargin] = useState(3);        // Pixels of padding around objects (reduced for tighter fit)
+  const [gapFill, setGapFill] = useState(6);      // Bridge over gaps/concavities (reduced to preserve detail)
+  const [smoothing, setSmoothing] = useState(2);  // Contour smoothing level (slightly smoothed but detailed)
 
   // AI scanning animation state
   const [scanProgress, setScanProgress] = useState(0);
   const [scanPhase, setScanPhase] = useState<string>("");
-  const [minArea, setMinArea] = useState(1000);   // Minimum object area in pixels
+  const [minArea, setMinArea] = useState(500);    // Minimum object area in pixels (reduced to detect smaller items)
 
   // Template matching state
   const [templateMatches, setTemplateMatches] = useState<Record<string, { name: string; category: string; confidence: number } | null>>({});
@@ -180,8 +180,11 @@ export function StepSegment({
         minY = Math.min(minY, y);
         maxY = Math.max(maxY, y);
 
-        // 4-connected neighbors
-        stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+        // 8-connected neighbors for smoother boundaries
+        stack.push(
+          [x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1],
+          [x + 1, y + 1], [x - 1, y - 1], [x + 1, y - 1], [x - 1, y + 1]
+        );
       }
 
       if (area < minObjectArea) return null;
@@ -234,7 +237,11 @@ export function StepSegment({
 
       visited[idx] = 1;
 
-      stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+      // 8-connected neighbors
+      stack.push(
+        [x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1],
+        [x + 1, y + 1], [x - 1, y - 1], [x + 1, y - 1], [x - 1, y + 1]
+      );
     }
 
     // Everything not visited from outside is either the object or an internal hole

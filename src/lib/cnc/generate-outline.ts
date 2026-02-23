@@ -191,3 +191,70 @@ export function fitModelToCase(
 
   return { model: centerModel(model), fits, scale: 1 };
 }
+
+// Interface for layout items passed from the frontend
+interface LayoutItemOutline {
+  id: string;
+  name: string;
+  outerPath: OutlinePoint[];
+  innerPaths: { id: string; points: OutlinePoint[] }[];
+  position: { x: number; y: number };
+  rotation: number;
+}
+
+// Generate a complete SVG preview with case outline and all cutouts
+export function generatePreviewSvg(
+  outlines: LayoutItemOutline[],
+  options: Partial<GenerateOutlineOptions> = {},
+  caseWidth: number,
+  caseHeight: number
+): string {
+  const opts = { ...DEFAULT_OPTIONS, ...options };
+
+  // Create case outline rectangle
+  const caseOutline: makerjs.IModel = {
+    paths: {
+      top: new makerjs.paths.Line([0, 0], [caseWidth, 0]),
+      right: new makerjs.paths.Line([caseWidth, 0], [caseWidth, caseHeight]),
+      bottom: new makerjs.paths.Line([caseWidth, caseHeight], [0, caseHeight]),
+      left: new makerjs.paths.Line([0, caseHeight], [0, 0]),
+    },
+  };
+
+  // Create combined model with case and all cutouts
+  const combinedModel: makerjs.IModel = {
+    models: {
+      case: caseOutline,
+    },
+  };
+
+  // Add each item cutout
+  outlines.forEach((outline, index) => {
+    if (!outline.outerPath || outline.outerPath.length < 3) return;
+
+    // Simplify the path
+    const simplifiedOuter = simplifyPath(outline.outerPath, opts.simplifyThreshold);
+
+    // Create path points, offset by position
+    const pathPoints: [number, number][] = simplifiedOuter.map((p) => [
+      p.x + outline.position.x,
+      p.y + outline.position.y,
+    ]);
+
+    // Create the cutout model
+    const cutoutModel = new makerjs.models.ConnectTheDots(true, pathPoints);
+
+    combinedModel.models![`cutout_${index}_${outline.id}`] = cutoutModel;
+  });
+
+  // Generate SVG
+  const svg = makerjs.exporter.toSVG(combinedModel, {
+    units: makerjs.unitType.Inch,
+    stroke: "#FF4D00",
+    strokeWidth: "0.02in",
+    fill: "none",
+    viewBox: true,
+  });
+
+  return svg;
+}
