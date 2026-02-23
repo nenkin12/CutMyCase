@@ -125,11 +125,11 @@ export default function AdminDashboard() {
               <Link href="/admin" className="text-accent">
                 Dashboard
               </Link>
+              <Link href="/admin/orders" className="text-text-secondary hover:text-white">
+                Orders
+              </Link>
               <Link href="/admin/designs" className="text-text-secondary hover:text-white">
                 Designs
-              </Link>
-              <Link href="/admin/presets" className="text-text-secondary hover:text-white">
-                Presets
               </Link>
               <Link href="/admin/cases" className="text-text-secondary hover:text-white">
                 Cases
@@ -268,6 +268,22 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-4">
+              <Link
+                href="/admin/orders"
+                className="flex items-center gap-4 p-4 bg-carbon rounded-[4px] hover:bg-accent/10 transition-colors"
+              >
+                <div className="w-10 h-10 bg-accent/20 rounded-[4px] flex items-center justify-center">
+                  <ShoppingCart className="w-5 h-5 text-accent" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-medium">View Orders</h4>
+                  <p className="text-sm text-text-muted">
+                    Manage orders and production pipeline
+                  </p>
+                </div>
+                <ArrowRight className="w-5 h-5 text-text-muted" />
+              </Link>
+
               <Link
                 href="/admin/designs"
                 className="flex items-center gap-4 p-4 bg-carbon rounded-[4px] hover:bg-accent/10 transition-colors"
