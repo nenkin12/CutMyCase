@@ -51,7 +51,6 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -102,8 +101,8 @@ export default function OrdersPage() {
               <Link href="/admin" className="text-text-secondary hover:text-white">
                 Dashboard
               </Link>
-              <Link href="/admin/designs" className="text-text-secondary hover:text-white">
-                Designs
+              <Link href="/admin/pipeline" className="text-text-secondary hover:text-white">
+                Pipeline
               </Link>
               <Link href="/admin/orders" className="text-white font-medium">
                 Orders
@@ -161,11 +160,11 @@ export default function OrdersPage() {
               const layoutItems = Array.isArray(order.designData) ? order.designData : [];
 
               return (
-                <Card key={order.id} className="overflow-hidden">
+                <Card key={order.id} className="overflow-hidden hover:border-accent/50 transition-colors">
                   <CardContent className="p-0">
                     <div className="flex flex-col md:flex-row">
                       {/* Order Info */}
-                      <div className="flex-1 p-6">
+                      <Link href={`/admin/orders/${order.id}`} className="flex-1 p-6 cursor-pointer">
                         <div className="flex items-start justify-between mb-4">
                           <div>
                             <h3 className="font-heading text-lg">{order.orderNumber}</h3>
@@ -229,40 +228,31 @@ export default function OrdersPage() {
                             )}
                           </div>
                         </div>
-                      </div>
+                      </Link>
 
                       {/* Actions */}
                       <div className="flex md:flex-col gap-2 p-6 bg-dark/50 md:border-l border-t md:border-t-0 border-border">
                         <Button
                           variant="default"
                           size="sm"
-                          onClick={() => downloadSvg(order.id)}
+                          onClick={(e) => { e.stopPropagation(); downloadSvg(order.id); }}
                           className="flex-1 md:flex-none"
                         >
                           <Download className="w-4 h-4 mr-2" />
                           Download SVG
                         </Button>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => setSelectedOrder(selectedOrder?.id === order.id ? null : order)}
-                          className="flex-1 md:flex-none"
-                        >
-                          <Eye className="w-4 h-4 mr-2" />
-                          {selectedOrder?.id === order.id ? "Hide Details" : "View Details"}
-                        </Button>
+                        <Link href={`/admin/orders/${order.id}`}>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="flex-1 md:flex-none w-full"
+                          >
+                            <Eye className="w-4 h-4 mr-2" />
+                            Work on Order
+                          </Button>
+                        </Link>
                       </div>
                     </div>
-
-                    {/* Expanded Details */}
-                    {selectedOrder?.id === order.id && (
-                      <div className="p-6 bg-dark/30 border-t border-border">
-                        <h4 className="font-heading text-sm mb-4">Full Design Data</h4>
-                        <pre className="bg-dark p-4 rounded text-xs overflow-auto max-h-64">
-                          {JSON.stringify(order.designData, null, 2)}
-                        </pre>
-                      </div>
-                    )}
                   </CardContent>
                 </Card>
               );
