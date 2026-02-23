@@ -56,6 +56,7 @@ interface WizardState {
   caseName: string | null;
   caseWidth: number | null;
   caseHeight: number | null;
+  fingerPullEnabled: boolean;
 }
 
 const initialState: WizardState = {
@@ -73,6 +74,7 @@ const initialState: WizardState = {
   caseName: null,
   caseWidth: null,
   caseHeight: null,
+  fingerPullEnabled: true,
 };
 
 const steps: { id: WizardStep; label: string }[] = [
@@ -248,7 +250,7 @@ export function UploadWizard() {
                 imageWidth={state.imageWidth!}
                 imageHeight={state.imageHeight!}
                 imageUrl={state.imageUrl}
-                onComplete={(layoutItems, caseId, caseName, caseWidth, caseHeight) => {
+                onComplete={(layoutItems, caseId, caseName, caseWidth, caseHeight, fingerPullEnabled) => {
                   trackStepComplete("layout", { caseId, caseName });
                   updateState({
                     layoutItems,
@@ -256,6 +258,7 @@ export function UploadWizard() {
                     caseName,
                     caseWidth,
                     caseHeight,
+                    fingerPullEnabled,
                     step: "checkout",
                   });
                 }}
@@ -270,11 +273,10 @@ export function UploadWizard() {
                 caseName={state.caseName || "Custom Case"}
                 caseWidth={state.caseWidth || 0}
                 caseHeight={state.caseHeight || 0}
+                fingerPullEnabled={state.fingerPullEnabled}
                 onComplete={() => {
                   trackStepComplete("checkout");
                   trackStepComplete("completed");
-                  // Reset wizard or redirect
-                  alert("Order submitted! We will contact you shortly.");
                 }}
                 onBack={() => goToStep("layout")}
               />

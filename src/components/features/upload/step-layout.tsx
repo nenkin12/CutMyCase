@@ -33,6 +33,131 @@ interface LayoutItem {
   sourceHeight: number;
 }
 
+// Calculate angle at a point (in degrees)
+function angleAtPoint(prev: number[], curr: number[], next: number[]): number {
+  const v1 = [curr[0] - prev[0], curr[1] - prev[1]];
+  const v2 = [next[0] - curr[0], next[1] - curr[1]];
+  const dot = v1[0] * v2[0] + v1[1] * v2[1];
+  const mag1 = Math.sqrt(v1[0] * v1[0] + v1[1] * v1[1]);
+  const mag2 = Math.sqrt(v2[0] * v2[0] + v2[1] * v2[1]);
+  if (mag1 < 0.0001 || mag2 < 0.0001) return 0;
+  const cosAngle = Math.max(-1, Math.min(1, dot / (mag1 * mag2)));
+  return Math.acos(cosAngle) * (180 / Math.PI);
+}
+
+// Gentle shape refinement for CNC-ready output
+// Cleans up minor noise while preserving the true shape and details
+function refineShape(points: number[][], width: number, height: number): number[][] {
+  if (points.length < 4) return points;
+
+  const size = Math.min(width, height);
+
+  // Step 1: Very gentle noise removal - only remove tiny jitter
+  // Use small tolerance to preserve details
+  const simplifyTolerance = Math.max(0.008, size * 0.008);
+  let refined = simplifyPath(points, simplifyTolerance);
+
+  // Step 2: Only straighten edges that are VERY close to straight
+  // Look at each edge (between consecutive points) and snap if nearly straight
+  const result: number[][] = [];
+
+  for (let i = 0; i < refined.length; i++) {
+    const curr = refined[i];
+    const next = refined[(i + 1) % refined.length];
+
+    result.push([...curr]);
+
+    // Check if this segment is nearly horizontal or vertical (within 3 degrees)
+    const dx = next[0] - curr[0];
+    const dy = next[1] - curr[1];
+    const segLength = Math.sqrt(dx * dx + dy * dy);
+
+    if (segLength > 0.1) { // Only for meaningful segments
+      const angle = Math.atan2(Math.abs(dy), Math.abs(dx)) * (180 / Math.PI);
+
+      // Very strict - only snap if within 3 degrees of h/v
+      if (angle < 3) {
+        // Nearly horizontal - snap next point's Y to current
+        refined[(i + 1) % refined.length][1] = curr[1];
+      } else if (angle > 87) {
+        // Nearly vertical - snap next point's X to current
+        refined[(i + 1) % refined.length][0] = curr[0];
+      }
+    }
+  }
+
+  return refined;
+}
+
+// Detect if shape is a near-perfect rectangle and enforce it
+// Very strict - only applies to shapes that are already almost rectangular
+function enforceRectangle(points: number[][], edgeTolerance: number = 0.08): number[][] {
+  if (points.length < 4) return points;
+
+  // Calculate bounding box
+  const xs = points.map(p => p[0]);
+  const ys = points.map(p => p[1]);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const width = maxX - minX;
+  const height = maxY - minY;
+
+  // Skip tiny shapes
+  if (width < 0.1 || height < 0.1) return points;
+
+  // Very tight tolerance - point must be very close to edge
+  const tol = Math.min(width, height) * edgeTolerance;
+
+  // Check if each point is close to one of the bounding box edges
+  let pointsOnEdge = 0;
+  for (const p of points) {
+    const nearLeft = Math.abs(p[0] - minX) < tol;
+    const nearRight = Math.abs(p[0] - maxX) < tol;
+    const nearTop = Math.abs(p[1] - minY) < tol;
+    const nearBottom = Math.abs(p[1] - maxY) < tol;
+
+    if (nearLeft || nearRight || nearTop || nearBottom) {
+      pointsOnEdge++;
+    }
+  }
+
+  // Only enforce rectangle if >95% of points are on edges (very strict)
+  const edgeRatio = pointsOnEdge / points.length;
+
+  if (edgeRatio > 0.95) {
+    // Shape is a near-perfect rectangle - clean it up
+    return [
+      [minX, minY],
+      [maxX, minY],
+      [maxX, maxY],
+      [minX, maxY]
+    ];
+  }
+
+  // Don't force rectangles on anything else
+  return points;
+}
+
+// Main intelligent processing function
+function intelligentProcess(points: number[][], width: number, height: number): number[][] {
+  if (points.length < 3) return points;
+
+  // Step 1: Check if it's a near-perfect rectangle (very strict)
+  let result = enforceRectangle(points, 0.08);
+
+  // If it was converted to a rectangle, we're done
+  if (result.length === 4) {
+    return result;
+  }
+
+  // Step 2: Gentle shape refinement - clean up minor noise while preserving details
+  result = refineShape(points, width, height);
+
+  return result;
+}
+
 // Gentle smoothing - simplify the contour while preserving shape
 function smoothPoints(points: number[][], iterations: number): number[][] {
   if (iterations <= 0 || points.length < 3) return points;
@@ -375,7 +500,7 @@ interface StepLayoutProps {
   imageWidth: number;
   imageHeight: number;
   imageUrl: string;
-  onComplete: (layoutItems: LayoutItem[], caseId: string, caseName: string, caseWidth: number, caseHeight: number) => void;
+  onComplete: (layoutItems: LayoutItem[], caseId: string, caseName: string, caseWidth: number, caseHeight: number, fingerPullEnabled: boolean) => void;
   onBack: () => void;
 }
 
@@ -405,6 +530,7 @@ export function StepLayout({
 
   // Processing settings
   const [smoothingLevel, setSmoothingLevel] = useState(2); // 0-5 (2 = gentle smoothing, good default)
+  const [fingerPullEnabled, setFingerPullEnabled] = useState(true); // On by default, applied in post
   const [showProcessingPanel, setShowProcessingPanel] = useState(false);
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [sourceImage, setSourceImage] = useState<HTMLImageElement | null>(null);
@@ -464,12 +590,21 @@ export function StepLayout({
     setZoom(Math.max(0.2, autoZoom)); // Lower minimum zoom on mobile (0.2 instead of 0.25)
   }, [currentCase, selectedCase, customWidth, customHeight]);
 
-  // Process points with smoothing
+  // Process points with intelligent straightening and smoothing
   const processPoints = useCallback((
-    rawPoints: number[][]
+    rawPoints: number[][],
+    width: number,
+    height: number
   ): number[][] => {
-    // Apply smoothing
-    return smoothPoints(rawPoints, smoothingLevel);
+    // Step 1: Intelligent processing (rectangle detection, edge refinement)
+    let processed = intelligentProcess(rawPoints, width, height);
+
+    // Step 2: Apply smoothing if not a perfect rectangle (4 points means it was detected as rectangular)
+    if (processed.length !== 4 && smoothingLevel > 0) {
+      processed = smoothPoints(processed, smoothingLevel);
+    }
+
+    return processed;
   }, [smoothingLevel]);
 
   // Convert segmented items to layout items
@@ -509,8 +644,8 @@ export function StepLayout({
           p[1] - minY
         ]);
 
-        // Apply smoothing
-        const processedPoints = processPoints(rawPoints);
+        // Apply intelligent processing and smoothing
+        const processedPoints = processPoints(rawPoints, width, height);
 
         // Initial position: spread items out (starting from safe zone)
         const col = index % 3;
@@ -901,8 +1036,8 @@ export function StepLayout({
       p[1] - minY
     ]);
 
-    // Apply smoothing
-    const processedPoints = processPoints(normalizedPoints);
+    // Apply intelligent processing and smoothing
+    const processedPoints = processPoints(normalizedPoints, preset.widthInches, preset.heightInches);
 
     // Create a new layout item
     const newId = `preset_${preset.id}_${Date.now()}`;
@@ -1275,6 +1410,30 @@ export function StepLayout({
                   </div>
                 </div>
 
+                {/* Finger Pulls Toggle */}
+                <div className="pt-3 border-t border-dark">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm">Finger Pulls</label>
+                    <button
+                      onClick={() => setFingerPullEnabled(!fingerPullEnabled)}
+                      className={cn(
+                        "w-12 h-6 rounded-full transition-colors relative",
+                        fingerPullEnabled ? "bg-accent" : "bg-dark"
+                      )}
+                    >
+                      <div className={cn(
+                        "w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform",
+                        fingerPullEnabled ? "translate-x-6" : "translate-x-0.5"
+                      )} />
+                    </button>
+                  </div>
+                  <p className="text-xs text-text-muted">
+                    {fingerPullEnabled
+                      ? "Finger pulls will be added during production for easy item removal."
+                      : "No finger pulls will be added to cutouts."}
+                  </p>
+                </div>
+
               </div>
             )}
           </div>
@@ -1461,7 +1620,7 @@ export function StepLayout({
           Back
         </Button>
         <Button
-          onClick={() => onComplete(layoutItems, selectedCase, `${currentCase.brand} ${currentCase.name}`, currentCase.innerWidth, currentCase.innerHeight)}
+          onClick={() => onComplete(layoutItems, selectedCase, `${currentCase.brand} ${currentCase.name}`, currentCase.innerWidth, currentCase.innerHeight, fingerPullEnabled)}
           disabled={fitPercentage < 100}
         >
           Continue to Checkout

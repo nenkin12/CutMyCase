@@ -192,7 +192,8 @@ enum OrderStatus {
 
 model Order {
   id              String      @id @default(cuid())
-  userId          String
+  userId          String?
+  sessionId       String?     // For guest orders
   orderNumber     String      @unique
   status          OrderStatus @default(PENDING)
 
@@ -211,6 +212,21 @@ model Order {
   shippingMethod    String?
   trackingNumber    String?
 
+  // Contact info (for guest orders)
+  customerEmail   String?
+  customerName    String?
+  customerPhone   String?
+
+  // Design data (layout items, case info, SVG)
+  designData      Json?       // Full layout data for reproduction
+  svgData         String?     @db.Text  // Generated SVG content
+  caseId          String?     // Selected case ID
+  caseName        String?     // Case name for display
+  caseWidth       Float?      // Case interior width (inches)
+  caseHeight      Float?      // Case interior height (inches)
+  needsCase       Boolean     @default(false)  // Customer needs case too
+  fingerPulls     Boolean     @default(true)   // Add finger pulls in production
+
   // Notes
   customerNotes   String?
   adminNotes      String?
@@ -222,7 +238,7 @@ model Order {
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
-  user            User        @relation(fields: [userId], references: [id])
+  user            User?       @relation(fields: [userId], references: [id])
   shippingAddress Address?    @relation(fields: [shippingAddressId], references: [id])
   items           OrderItem[]
   shopJobs        ShopJob[]
