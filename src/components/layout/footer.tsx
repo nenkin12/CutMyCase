@@ -4,18 +4,16 @@ import { Mail, Phone, MapPin } from "lucide-react";
 const footerLinks = {
   products: [
     { href: "/cases", label: "All Cases" },
-    { href: "/cases?category=pelican", label: "Pelican Cases" },
     { href: "/upload", label: "Custom Foam" },
   ],
-  support: [
+  company: [
+    { href: "/about", label: "About Us" },
     { href: "/faq", label: "FAQ" },
     { href: "/contact", label: "Contact Us" },
-    { href: "/shipping", label: "Shipping Info" },
   ],
   legal: [
     { href: "/privacy", label: "Privacy Policy" },
     { href: "/terms", label: "Terms of Service" },
-    { href: "/returns", label: "Return Policy" },
   ],
 };
 
@@ -68,11 +66,11 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* Support */}
+          {/* Company */}
           <div>
-            <h4 className="font-heading text-lg mb-4">Support</h4>
+            <h4 className="font-heading text-lg mb-4">Company</h4>
             <ul className="space-y-2">
-              {footerLinks.support.map((link) => (
+              {footerLinks.company.map((link) => (
                 <li key={link.href}>
                   <Link
                     href={link.href}

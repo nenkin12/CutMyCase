@@ -1124,8 +1124,9 @@ export default function Home() {
               </ul>
             </div>
             <div>
-              <h4 className="font-bold mb-4">Support</h4>
+              <h4 className="font-bold mb-4">Company</h4>
               <ul className="space-y-2 text-sm text-zinc-500">
+                <li><Link href="/about" className="hover:text-orange-500 transition-colors">About Us</Link></li>
                 <li><Link href="/faq" className="hover:text-orange-500 transition-colors">FAQ</Link></li>
                 <li><Link href="/contact" className="hover:text-orange-500 transition-colors">Contact Us</Link></li>
               </ul>
