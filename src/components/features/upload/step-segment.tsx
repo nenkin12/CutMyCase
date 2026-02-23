@@ -741,7 +741,7 @@ export function StepSegment({
             <canvas ref={overlayCanvasRef} className="absolute inset-0" />
 
             {isLoading && (
-              <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center overflow-hidden">
+              <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center overflow-hidden z-50">
                 {/* Scanning line animation */}
                 <div className="absolute inset-0 pointer-events-none">
                   <div
@@ -749,19 +749,6 @@ export function StepSegment({
                     style={{
                       top: `${scanProgress}%`,
                       boxShadow: '0 0 20px 5px rgba(255, 77, 0, 0.5)',
-                      animation: 'pulse 1s ease-in-out infinite'
-                    }}
-                  />
-                  {/* Grid overlay */}
-                  <div
-                    className="absolute inset-0 opacity-20"
-                    style={{
-                      backgroundImage: `
-                        linear-gradient(rgba(255,77,0,0.3) 1px, transparent 1px),
-                        linear-gradient(90deg, rgba(255,77,0,0.3) 1px, transparent 1px)
-                      `,
-                      backgroundSize: '30px 30px',
-                      animation: 'scan-grid 2s linear infinite'
                     }}
                   />
                   {/* Corner brackets */}

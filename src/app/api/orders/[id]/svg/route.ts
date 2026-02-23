@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+
+// Firebase Storage URL
+const FIREBASE_STORAGE_URL = `https://firebasestorage.googleapis.com/v0/b/${process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET}/o`;
 
 export async function GET(
   request: NextRequest,
@@ -8,21 +10,23 @@ export async function GET(
   try {
     const { id } = await params;
 
-    const order = await prisma.order.findUnique({
-      where: { id },
-      select: {
-        orderNumber: true,
-        svgData: true,
-        caseName: true,
-      },
-    });
+    // Fetch order JSON from Firebase Storage
+    const fileName = `orders/${id}.json`;
+    const fileUrl = `${FIREBASE_STORAGE_URL}/${encodeURIComponent(fileName)}?alt=media`;
 
-    if (!order) {
-      return NextResponse.json(
-        { error: "Order not found" },
-        { status: 404 }
-      );
+    const response = await fetch(fileUrl);
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        return NextResponse.json(
+          { error: "Order not found" },
+          { status: 404 }
+        );
+      }
+      throw new Error("Failed to fetch order");
     }
+
+    const order = await response.json();
 
     if (!order.svgData) {
       return NextResponse.json(
@@ -32,9 +36,10 @@ export async function GET(
     }
 
     // Return SVG as a downloadable file
-    const filename = `${order.orderNumber}-${order.caseName?.replace(/\s+/g, "-") || "design"}.svg`;
+    const caseName = (order.caseName as string)?.replace(/\s+/g, "-") || "design";
+    const filename = `${order.orderNumber}-${caseName}.svg`;
 
-    return new NextResponse(order.svgData, {
+    return new NextResponse(order.svgData as string, {
       headers: {
         "Content-Type": "image/svg+xml",
         "Content-Disposition": `attachment; filename="${filename}"`,
