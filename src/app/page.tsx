@@ -496,15 +496,15 @@ function AudioIllustration() {
 }
 
 const industries = [
-  { title: "Firearms & Tactical", desc: "Rifles, pistols, magazines, optics", type: "firearms" as const },
   { title: "Photography & Video", desc: "Cameras, lenses, flash units", type: "photography" as const },
   { title: "Drones & UAV", desc: "Drones, controllers, batteries", type: "drone" as const },
   { title: "Professional Tools", desc: "Precision instruments, power tools", type: "tools" as const },
-  { title: "Medical Equipment", desc: "Diagnostic devices, instruments", type: "medical" as const },
   { title: "Audio & Visual", desc: "Microphones, mixers, monitors", type: "audio" as const },
+  { title: "Medical Equipment", desc: "Diagnostic devices, instruments", type: "medical" as const },
+  { title: "Tactical & Sporting", desc: "Custom protective cases", type: "tactical" as const },
 ];
 
-function IndustryVisual({ type }: { type: "firearms" | "photography" | "drone" | "tools" | "medical" | "audio" }) {
+function IndustryVisual({ type }: { type: "photography" | "drone" | "tools" | "medical" | "audio" | "tactical" }) {
   switch (type) {
     case "photography":
       return <PhotographyIllustration />;
@@ -685,7 +685,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Featured Showcase - Real Image */}
+      {/* Featured Showcase - Precision Craftsmanship */}
       <section className="py-24 bg-black">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
@@ -693,8 +693,8 @@ export default function Home() {
             <div className="relative group">
               <div className="aspect-[4/3] relative rounded-lg overflow-hidden border border-zinc-800">
                 <Image
-                  src="/images/showcase/pistol-marine-personalized.jpg"
-                  alt="Custom foam insert for tactical case with pistol, magazines, and personalized Marine Corps lid"
+                  src="/images/showcase/cases-variety-empty.jpg"
+                  alt="Precision CNC-cut foam inserts showing various cutout shapes and sizes"
                   fill
                   className="object-cover"
                   priority
@@ -703,35 +703,35 @@ export default function Home() {
               </div>
               {/* Overlay badge */}
               <div className="absolute bottom-4 left-4 bg-orange-500 text-white px-3 py-1 rounded text-sm font-bold">
-                Customer Build
+                CNC Precision
               </div>
             </div>
 
             {/* Text content */}
             <div>
-              <span className="text-orange-500 uppercase tracking-wider text-sm">Featured Build</span>
+              <span className="text-orange-500 uppercase tracking-wider text-sm">Precision Craftsmanship</span>
               <h2 className="text-4xl sm:text-5xl font-bold mt-2 mb-6">
-                Tactical Case <span className="text-orange-500">Perfection</span>
+                Custom Foam <span className="text-orange-500">Perfection</span>
               </h2>
               <p className="text-zinc-400 mb-6">
-                This custom case features precision-cut foam with a personalized lid engraving:
+                Every foam insert is precision-cut to your exact specifications:
               </p>
               <ul className="space-y-3 mb-8">
                 <li className="flex items-center gap-3 text-zinc-300">
                   <Check className="w-5 h-5 text-orange-500 flex-shrink-0" />
-                  Personalized lid with custom engraving
+                  AI-powered shape detection from photos
                 </li>
                 <li className="flex items-center gap-3 text-zinc-300">
                   <Check className="w-5 h-5 text-orange-500 flex-shrink-0" />
-                  Precision pistol cutout with perfect fit
+                  CNC precision cutting (+/- 0.1&quot; tolerance)
                 </li>
                 <li className="flex items-center gap-3 text-zinc-300">
                   <Check className="w-5 h-5 text-orange-500 flex-shrink-0" />
-                  Multiple magazine slots
+                  Custom depths for each item
                 </li>
                 <li className="flex items-center gap-3 text-zinc-300">
                   <Check className="w-5 h-5 text-orange-500 flex-shrink-0" />
-                  Foam Done By Rentz Industries
+                  Works with any case brand
                 </li>
               </ul>
               <Link href="/upload">
@@ -750,24 +750,19 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <span className="text-orange-500 uppercase tracking-wider text-sm">Our Work</span>
-            <h2 className="text-4xl sm:text-5xl font-bold mt-2 mb-4">Customer Builds</h2>
+            <h2 className="text-4xl sm:text-5xl font-bold mt-2 mb-4">Precision Foam Inserts</h2>
             <p className="text-zinc-400 max-w-xl mx-auto">
-              Real foam inserts we&apos;ve crafted for our customers
+              Custom CNC-cut foam for cameras, drones, tools, and more
             </p>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             {[
-              { src: "/images/showcase/1911-pistol-magazines.jpg", alt: "1911 pistol with magazines" },
-              { src: "/images/showcase/2011-pistol-magazines.jpg", alt: "2011 competition pistol with magazines" },
-              { src: "/images/showcase/ak-rifle-case.jpg", alt: "AK rifle in custom case" },
-              { src: "/images/showcase/ar-rifle-optic.jpg", alt: "AR rifle with optic" },
-              { src: "/images/showcase/ar15-overhead.jpg", alt: "AR15 overhead view" },
-              { src: "/images/showcase/ar15-rifle-case.jpg", alt: "AR15 rifle case" },
-              { src: "/images/showcase/multiple-cases-collection.jpg", alt: "Multiple pistol cases" },
-              { src: "/images/showcase/smg-pistol-case.jpg", alt: "SMG pistol case" },
+              { src: "/images/showcase/cases-variety-empty.jpg", alt: "Various precision foam cutouts" },
+              { src: "/images/showcase/multiple-cases-collection.jpg", alt: "Multiple custom foam cases" },
+              { src: "/images/showcase/2011-pistol-magazines.jpg", alt: "Precision foam insert with custom cutouts" },
             ].map((image, index) => (
-              <div key={index} className="group relative aspect-square rounded-lg overflow-hidden border border-zinc-800 hover:border-orange-500/50 transition-all">
+              <div key={index} className="group relative aspect-[4/3] rounded-lg overflow-hidden border border-zinc-800 hover:border-orange-500/50 transition-all">
                 <Image
                   src={image.src}
                   alt={image.alt}
@@ -956,9 +951,9 @@ export default function Home() {
                 href="/upload"
                 className="group relative overflow-hidden rounded aspect-[4/3] bg-zinc-900 border border-zinc-800 hover:border-orange-500/50 transition-all"
               >
-                {industry.type === "firearms" ? (
+                {industry.type === "tactical" ? (
                   <Image
-                    src="/images/showcase/ar15-overhead.jpg"
+                    src="/images/showcase/cases-variety-empty.jpg"
                     alt={industry.title}
                     fill
                     className="object-cover transition-transform group-hover:scale-105"
@@ -1100,7 +1095,7 @@ export default function Home() {
                       <div className="h-8 bg-zinc-800 rounded mb-4" />
                       <div className="aspect-square bg-zinc-800 rounded-lg mb-4 flex items-center justify-center overflow-hidden">
                         <Image
-                          src="/images/showcase/1911-pistol-magazines.jpg"
+                          src="/images/showcase/cases-variety-empty.jpg"
                           alt="App preview"
                           width={200}
                           height={200}
