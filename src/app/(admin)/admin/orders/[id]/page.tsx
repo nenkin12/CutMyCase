@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect, use } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useAuth } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -71,6 +73,8 @@ const statusOptions = [
 
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const router = useRouter();
+  const { user, loading: authLoading, canAccessAdmin } = useAuth();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -81,9 +85,18 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [adminNotes, setAdminNotes] = useState("");
   const [trackingNumber, setTrackingNumber] = useState("");
 
+  // Auth check
   useEffect(() => {
-    fetchOrder();
-  }, [id]);
+    if (!authLoading && (!user || !canAccessAdmin)) {
+      router.push("/auth/signin");
+    }
+  }, [user, authLoading, canAccessAdmin, router]);
+
+  useEffect(() => {
+    if (user && canAccessAdmin) {
+      fetchOrder();
+    }
+  }, [id, user, canAccessAdmin]);
 
   const fetchOrder = async () => {
     setLoading(true);

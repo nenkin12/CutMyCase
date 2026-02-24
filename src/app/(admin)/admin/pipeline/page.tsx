@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useAuth } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -81,9 +83,18 @@ const pipelineStages = [
 ];
 
 export default function PipelinePage() {
+  const router = useRouter();
+  const { user, loading: authLoading, canAccessAdmin } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Auth check
+  useEffect(() => {
+    if (!authLoading && (!user || !canAccessAdmin)) {
+      router.push("/auth/signin");
+    }
+  }, [user, authLoading, canAccessAdmin, router]);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -101,8 +112,19 @@ export default function PipelinePage() {
   };
 
   useEffect(() => {
-    fetchOrders();
-  }, []);
+    if (user && canAccessAdmin) {
+      fetchOrders();
+    }
+  }, [user, canAccessAdmin]);
+
+  // Show loading while checking auth
+  if (authLoading || !canAccessAdmin) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
+      </div>
+    );
+  }
 
   const getOrdersByStage = (stageId: string) => {
     return orders.filter(order => order.status === stageId);

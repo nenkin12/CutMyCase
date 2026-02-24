@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { signInWithPopup, signOut } from "firebase/auth";
-import { auth, googleProvider } from "@/lib/firebase";
-import { useAuth, ADMIN_EMAIL } from "@/components/providers/auth-provider";
+import { signOut } from "firebase/auth";
+import { auth } from "@/lib/firebase";
+import { useAuth } from "@/components/providers/auth-provider";
 import { User, LogOut, Settings, ChevronDown } from "lucide-react";
 import Link from "next/link";
 
 export function UserMenu() {
-  const { user, loading, isAdmin } = useAuth();
+  const { user, loading, canAccessAdmin } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -23,14 +23,6 @@ export function UserMenu() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
-  const handleSignIn = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (error) {
-      console.error("Sign in error:", error);
-    }
-  };
 
   const handleSignOut = async () => {
     try {
@@ -49,13 +41,13 @@ export function UserMenu() {
 
   if (!user) {
     return (
-      <button
-        onClick={handleSignIn}
+      <Link
+        href="/auth/signin"
         className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-accent hover:bg-accent/90 rounded-[4px] transition-colors"
       >
         <User className="w-4 h-4" />
         Sign In
-      </button>
+      </Link>
     );
   }
 
@@ -87,9 +79,9 @@ export function UserMenu() {
           </div>
 
           <div className="py-1">
-            {isAdmin && (
+            {canAccessAdmin && (
               <Link
-                href="/admin"
+                href="/admin/orders"
                 onClick={() => setIsOpen(false)}
                 className="flex items-center gap-3 px-4 py-2 text-sm hover:bg-dark transition-colors"
               >

@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { useAuth, ADMIN_EMAIL } from "@/components/providers/auth-provider";
+import { useAuth } from "@/components/providers/auth-provider";
 
 interface Session {
   id: string;
@@ -68,18 +68,18 @@ function formatTimeAgo(timestamp: number): string {
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const { user, loading: authLoading, isAdmin } = useAuth();
+  const { user, loading: authLoading, isAdmin, isFulfillment, canAccessAdmin, role } = useAuth();
   const [analytics, setAnalytics] = useState<{ sessions: Session[]; stats: Stats } | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Redirect non-admin users
+  // Redirect users without admin/fulfillment access
   useEffect(() => {
-    if (!authLoading && (!user || !isAdmin)) {
+    if (!authLoading && (!user || !canAccessAdmin)) {
       router.push("/auth/signin");
     }
-  }, [user, authLoading, isAdmin, router]);
+  }, [user, authLoading, canAccessAdmin, router]);
 
-  // Fetch analytics
+  // Fetch analytics (admin only)
   const fetchAnalytics = async () => {
     setLoading(true);
     try {
@@ -98,10 +98,13 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (user && isAdmin) {
       fetchAnalytics();
+    } else if (user && isFulfillment) {
+      // Fulfillment users go straight to orders
+      router.push("/admin/orders");
     }
-  }, [user, isAdmin]);
+  }, [user, isAdmin, isFulfillment, router]);
 
-  if (authLoading || !isAdmin) {
+  if (authLoading || !canAccessAdmin) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-text-muted">Loading...</div>
