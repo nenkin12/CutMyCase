@@ -46,7 +46,7 @@ const pipelineStages = [
   },
   { 
     id: "PAID", 
-    label: "Paid", 
+    label: "New Orders", 
     icon: DollarSign, 
     color: "border-green-500",
     bgColor: "bg-green-500/10",

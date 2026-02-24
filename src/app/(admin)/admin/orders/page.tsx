@@ -64,7 +64,7 @@ interface Order {
 
 const pipelineStages = [
   { id: "PENDING", label: "Pending", icon: Clock, color: "border-yellow-500", bg: "bg-yellow-500/10", text: "text-yellow-500" },
-  { id: "PAID", label: "Paid", icon: DollarSign, color: "border-green-500", bg: "bg-green-500/10", text: "text-green-500" },
+  { id: "PAID", label: "New Orders", icon: DollarSign, color: "border-green-500", bg: "bg-green-500/10", text: "text-green-500" },
   { id: "PROCESSING", label: "Processing", icon: Package, color: "border-blue-500", bg: "bg-blue-500/10", text: "text-blue-500" },
   { id: "SHIPPED", label: "Shipped", icon: Truck, color: "border-purple-500", bg: "bg-purple-500/10", text: "text-purple-500" },
   { id: "DELIVERED", label: "Delivered", icon: CheckCircle, color: "border-green-600", bg: "bg-green-600/10", text: "text-green-600" },

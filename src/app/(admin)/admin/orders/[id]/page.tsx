@@ -64,7 +64,7 @@ interface LayoutItem {
 
 const statusOptions = [
   { value: "PENDING", label: "Pending Review", icon: Clock, color: "text-yellow-500", bg: "bg-yellow-500/10" },
-  { value: "PAID", label: "Paid", icon: DollarSign, color: "text-green-500", bg: "bg-green-500/10" },
+  { value: "PAID", label: "New Orders", icon: DollarSign, color: "text-green-500", bg: "bg-green-500/10" },
   { value: "PROCESSING", label: "Processing", icon: Package, color: "text-blue-500", bg: "bg-blue-500/10" },
   { value: "SHIPPED", label: "Shipped", icon: Truck, color: "text-purple-500", bg: "bg-purple-500/10" },
   { value: "DELIVERED", label: "Delivered", icon: CheckCircle, color: "text-green-600", bg: "bg-green-600/10" },
