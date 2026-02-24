@@ -693,8 +693,8 @@ export default function Home() {
             <div className="relative group">
               <div className="aspect-[4/3] relative rounded-lg overflow-hidden border border-zinc-800">
                 <Image
-                  src="/images/showcase-firearms-1.jpg"
-                  alt="Custom foam insert for tactical case with pistol, ear protection, magazines, and suppressor"
+                  src="/images/showcase/pistol-marine-personalized.jpg"
+                  alt="Custom foam insert for tactical case with pistol, magazines, and personalized Marine Corps lid"
                   fill
                   className="object-cover"
                   priority
@@ -714,24 +714,24 @@ export default function Home() {
                 Tactical Case <span className="text-orange-500">Perfection</span>
               </h2>
               <p className="text-zinc-400 mb-6">
-                This custom Pelican case features precision-cut foam for a full tactical loadout:
+                This custom case features precision-cut foam with a personalized lid engraving:
               </p>
               <ul className="space-y-3 mb-8">
                 <li className="flex items-center gap-3 text-zinc-300">
                   <Check className="w-5 h-5 text-orange-500 flex-shrink-0" />
-                  Electronic ear protection with contoured fit
+                  Personalized lid with custom engraving
                 </li>
                 <li className="flex items-center gap-3 text-zinc-300">
                   <Check className="w-5 h-5 text-orange-500 flex-shrink-0" />
-                  10 magazine slots for organized storage
+                  Precision pistol cutout with perfect fit
                 </li>
                 <li className="flex items-center gap-3 text-zinc-300">
                   <Check className="w-5 h-5 text-orange-500 flex-shrink-0" />
-                  Pistol cutout with optic clearance
+                  Multiple magazine slots
                 </li>
                 <li className="flex items-center gap-3 text-zinc-300">
                   <Check className="w-5 h-5 text-orange-500 flex-shrink-0" />
-                  Suppressor slot with secure fit
+                  Foam Done By Rentz Industries
                 </li>
               </ul>
               <Link href="/upload">
@@ -741,6 +741,51 @@ export default function Home() {
                 </Button>
               </Link>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Showcase Gallery */}
+      <section className="py-24 bg-zinc-900">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <span className="text-orange-500 uppercase tracking-wider text-sm">Our Work</span>
+            <h2 className="text-4xl sm:text-5xl font-bold mt-2 mb-4">Customer Builds</h2>
+            <p className="text-zinc-400 max-w-xl mx-auto">
+              Real foam inserts we&apos;ve crafted for our customers
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {[
+              { src: "/images/showcase/1911-pistol-magazines.jpg", alt: "1911 pistol with magazines" },
+              { src: "/images/showcase/2011-pistol-magazines.jpg", alt: "2011 competition pistol with magazines" },
+              { src: "/images/showcase/ak-rifle-case.jpg", alt: "AK rifle in custom case" },
+              { src: "/images/showcase/ar-rifle-optic.jpg", alt: "AR rifle with optic" },
+              { src: "/images/showcase/ar15-overhead.jpg", alt: "AR15 overhead view" },
+              { src: "/images/showcase/ar15-rifle-case.jpg", alt: "AR15 rifle case" },
+              { src: "/images/showcase/multiple-cases-collection.jpg", alt: "Multiple pistol cases" },
+              { src: "/images/showcase/smg-pistol-case.jpg", alt: "SMG pistol case" },
+            ].map((image, index) => (
+              <div key={index} className="group relative aspect-square rounded-lg overflow-hidden border border-zinc-800 hover:border-orange-500/50 transition-all">
+                <Image
+                  src={image.src}
+                  alt={image.alt}
+                  fill
+                  className="object-cover transition-transform group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+            ))}
+          </div>
+
+          <div className="text-center mt-12">
+            <Link href="/upload">
+              <Button size="lg">
+                Create Your Custom Foam
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </Link>
           </div>
         </div>
       </section>
@@ -913,7 +958,7 @@ export default function Home() {
               >
                 {industry.type === "firearms" ? (
                   <Image
-                    src="/images/showcase-firearms-1.jpg"
+                    src="/images/showcase/ar15-overhead.jpg"
                     alt={industry.title}
                     fill
                     className="object-cover transition-transform group-hover:scale-105"
@@ -1055,7 +1100,7 @@ export default function Home() {
                       <div className="h-8 bg-zinc-800 rounded mb-4" />
                       <div className="aspect-square bg-zinc-800 rounded-lg mb-4 flex items-center justify-center overflow-hidden">
                         <Image
-                          src="/images/showcase-firearms-1.jpg"
+                          src="/images/showcase/1911-pistol-magazines.jpg"
                           alt="App preview"
                           width={200}
                           height={200}
