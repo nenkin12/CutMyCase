@@ -26,6 +26,8 @@ import {
   X,
   Calendar,
   ChevronRight,
+  ExternalLink,
+  MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -62,6 +64,14 @@ interface Order {
   deliveredAt: string | null;
 }
 
+interface TrackingInfo {
+  carrier: string;
+  status: string;
+  statusText: string;
+  trackingUrl: string | null;
+  delivered: boolean;
+}
+
 const pipelineStages = [
   { id: "PENDING", label: "Pending", icon: Clock, color: "border-yellow-500", bg: "bg-yellow-500/10", text: "text-yellow-500" },
   { id: "PAID", label: "New Orders", icon: DollarSign, color: "border-green-500", bg: "bg-green-500/10", text: "text-green-500" },
@@ -85,6 +95,10 @@ export default function OrdersPage() {
   const [editStatus, setEditStatus] = useState("");
   const [editAdminNotes, setEditAdminNotes] = useState("");
   const [editTrackingNumber, setEditTrackingNumber] = useState("");
+
+  // Tracking status
+  const [trackingInfo, setTrackingInfo] = useState<TrackingInfo | null>(null);
+  const [checkingTracking, setCheckingTracking] = useState(false);
 
   // Auth check
   useEffect(() => {
@@ -129,6 +143,49 @@ export default function OrdersPage() {
     setEditAdminNotes(order.adminNotes || "");
     setEditTrackingNumber(order.trackingNumber || "");
     setSaveSuccess(false);
+    setTrackingInfo(null);
+
+    // Auto-check tracking if there's a tracking number
+    if (order.trackingNumber) {
+      checkTracking(order.trackingNumber, order.id, order.status);
+    }
+  };
+
+  const checkTracking = async (trackingNumber: string, orderId: string, currentStatus: string) => {
+    if (!trackingNumber) return;
+
+    setCheckingTracking(true);
+    try {
+      const response = await fetch(`/api/tracking?number=${encodeURIComponent(trackingNumber)}`);
+      const data = await response.json();
+
+      setTrackingInfo({
+        carrier: data.carrier,
+        status: data.status,
+        statusText: data.statusText,
+        trackingUrl: data.trackingUrl,
+        delivered: data.delivered || false,
+      });
+
+      // Auto-update to delivered if tracking shows delivered and order is still "SHIPPED"
+      if (data.delivered && currentStatus === "SHIPPED") {
+        const updateResponse = await fetch(`/api/orders/${orderId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "DELIVERED" }),
+        });
+        if (updateResponse.ok) {
+          const updateData = await updateResponse.json();
+          setOrders(prev => prev.map(o => o.id === orderId ? updateData.order : o));
+          setSelectedOrder(updateData.order);
+          setEditStatus("DELIVERED");
+        }
+      }
+    } catch (err) {
+      console.error("Failed to check tracking:", err);
+    } finally {
+      setCheckingTracking(false);
+    }
   };
 
   const handleSave = async () => {
@@ -439,13 +496,55 @@ export default function OrdersPage() {
               {/* Tracking */}
               <div>
                 <h3 className="text-sm font-medium text-text-muted mb-3">Tracking</h3>
-                <input
-                  type="text"
-                  value={editTrackingNumber}
-                  onChange={(e) => setEditTrackingNumber(e.target.value)}
-                  placeholder="Tracking number..."
-                  className="w-full bg-carbon border border-border rounded-lg px-3 py-2 text-sm placeholder:text-text-muted focus:outline-none focus:border-accent"
-                />
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={editTrackingNumber}
+                      onChange={(e) => setEditTrackingNumber(e.target.value)}
+                      placeholder="Tracking number..."
+                      className="flex-1 bg-carbon border border-border rounded-lg px-3 py-2 text-sm placeholder:text-text-muted focus:outline-none focus:border-accent"
+                    />
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => checkTracking(editTrackingNumber, selectedOrder.id, editStatus)}
+                      disabled={!editTrackingNumber || checkingTracking}
+                    >
+                      {checkingTracking ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
+                    </Button>
+                  </div>
+
+                  {/* Tracking Status Display */}
+                  {trackingInfo && (
+                    <div className="bg-carbon rounded-lg p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-text-muted">Carrier</span>
+                        <span className="text-sm font-medium">{trackingInfo.carrier}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-text-muted">Status</span>
+                        <span className={cn(
+                          "text-sm font-medium",
+                          trackingInfo.delivered ? "text-green-500" : "text-purple-500"
+                        )}>
+                          {trackingInfo.statusText}
+                        </span>
+                      </div>
+                      {trackingInfo.trackingUrl && (
+                        <a
+                          href={trackingInfo.trackingUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 text-xs text-accent hover:underline mt-2"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          Track on {trackingInfo.carrier}
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Actions */}
