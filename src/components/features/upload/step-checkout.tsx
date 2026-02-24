@@ -52,6 +52,7 @@ export function StepCheckout({
   const [customerEmail, setCustomerEmail] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerNotes, setCustomerNotes] = useState("");
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   const handleContinue = () => {
     if (caseOption) {
@@ -256,6 +257,35 @@ export function StepCheckout({
           </div>
         </div>
 
+        {/* Design Review Agreement */}
+        <div className="bg-carbon rounded-[4px] p-6 space-y-4">
+          <h3 className="font-heading text-lg border-b border-border pb-2">Design Review Agreement</h3>
+          <div className="text-sm text-text-secondary space-y-3">
+            <p>
+              Please note that the 3D preview shown is a representation of your design. To ensure the best possible result for your custom foam insert:
+            </p>
+            <ul className="list-disc list-inside space-y-2 text-text-muted">
+              <li>We may make slight adjustments to optimize the design for CNC cutting</li>
+              <li>Minor modifications may be needed for structural integrity</li>
+              <li>We will send you a final design proof for your approval before cutting</li>
+            </ul>
+            <p className="text-text-secondary">
+              <strong>No cutting will begin until you have reviewed and approved the final design.</strong>
+            </p>
+          </div>
+          <label className="flex items-start gap-3 cursor-pointer mt-4 pt-4 border-t border-border">
+            <input
+              type="checkbox"
+              checked={agreedToTerms}
+              onChange={(e) => setAgreedToTerms(e.target.checked)}
+              className="mt-1 w-4 h-4 rounded border-border bg-dark accent-accent"
+            />
+            <span className="text-sm text-text-secondary">
+              I understand that slight adjustments may be made to my design and that I will receive a final proof for approval before production begins.
+            </span>
+          </label>
+        </div>
+
         {error && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-[4px] p-4">
             <p className="text-sm text-red-400">{error}</p>
@@ -267,7 +297,7 @@ export function StepCheckout({
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back
           </Button>
-          <Button onClick={handleSubmitOrder} disabled={isSubmitting || !customerEmail}>
+          <Button onClick={handleSubmitOrder} disabled={isSubmitting || !customerEmail || !agreedToTerms}>
             {isSubmitting ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
