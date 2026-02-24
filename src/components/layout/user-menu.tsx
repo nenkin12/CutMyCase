@@ -4,11 +4,11 @@ import { useState, useRef, useEffect } from "react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useAuth } from "@/components/providers/auth-provider";
-import { User, LogOut, Settings, ChevronDown } from "lucide-react";
+import { User, LogOut, Settings, ChevronDown, Package } from "lucide-react";
 import Link from "next/link";
 
 export function UserMenu() {
-  const { user, loading, canAccessAdmin } = useAuth();
+  const { user, loading, isAdmin, isFulfillment } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -79,14 +79,25 @@ export function UserMenu() {
           </div>
 
           <div className="py-1">
-            {canAccessAdmin && (
+            {isAdmin && (
               <Link
-                href="/admin/orders"
+                href="/admin"
                 onClick={() => setIsOpen(false)}
                 className="flex items-center gap-3 px-4 py-2 text-sm hover:bg-dark transition-colors"
               >
                 <Settings className="w-4 h-4 text-accent" />
                 Admin Panel
+              </Link>
+            )}
+
+            {isFulfillment && (
+              <Link
+                href="/admin/orders"
+                onClick={() => setIsOpen(false)}
+                className="flex items-center gap-3 px-4 py-2 text-sm hover:bg-dark transition-colors"
+              >
+                <Package className="w-4 h-4 text-accent" />
+                Fulfillment
               </Link>
             )}
 
